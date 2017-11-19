@@ -327,61 +327,6 @@ Admitted.
 
 Eval compute in (flatten_exp 1 (Binop ((Binop (Const 7) Plus (Const 15) )) Plus ((Binop (Const 7) Plus (Const 15) )) ) (fun e' => (Flat_Declaration 0 e' (Flat_Return 0)))).
 
-Fixpoint step_com_flat (cmd : com_flat) (s : state) : option (com * state * (option value)) :=
-  match cmd with
-    | Seq c1 c2 =>
-      (match (step_com_fn c1 s) with
-              | Some (newcmd,newstate,newret)  =>
-                match newret with
-                  | Some a => None
-                  | None => Some ((Seq newcmd c2), newstate, None)
-                end
-              | None => Some (c2, s, None)
-      end)
-    | Skip => None
-    | Return e => match (eval_exp e s) with
-                    | Value ans => Some (Skip, s, Some ans)
-                    | TypeError => None
-                  end
-    | Declaration x e next =>
-      match (is_declared x s) with
-        | true => None
-        | false =>
-          match (eval_exp e s) with
-            | Value ans => Some (next , (set x ans s), None)
-            | TypeError => None
-          end
-      end
-    | Assign_var x e => if (is_declared x s)
-                             && (type_matches_op (ret_op (get x s)) (Some (eval_exp e s)))
-                        then
-                          match (eval_exp e s) with
-                            | Value ans => Some (Skip , (set_local x ans s), None)
-                            | TypeError => None
-                          end
-                        else None
-    | Assign_ptr x' e => match (eval_exp x' s) with
-                           | Value (Remote_value x) =>
-                             if (is_declared x s)
-                                  && (type_matches_op (ret_op (get x s)) (Some (eval_exp e s)))
-                             then
-                               match (eval_exp e s) with
-                                 | Value ans => Some (Skip , (set_remote x ans s), None)
-                                 | TypeError => None
-                          end
-                             else None
-                           | _ => None
-                       end
-    | If condition thn els =>
-      match (eval_exp condition s) with
-        | Value (Bool_value true) => Some (thn, s, None)
-        | Value (Bool_value false) => Some (els, s, None)
-        | _ => None
-      end
-    | While condition thn => Some ((If condition (Seq thn cmd) Skip), s, None)
-  end.
-
-
 Fixpoint flatten (index : nat) (c : com) : (flat_com, ) :=
   match c with
     | Return e =>
@@ -401,3 +346,60 @@ Fixpoint flatten (index : nat) (c : com) : (flat_com, ) :=
   end.
 
 
+Fixpoint step_com_flat (cmd : com_flat) (s : state) : option (com * state * (option value)) :=
+  match cmd with
+    | Flat_Seq c1 c2 =>
+      (match (step_com_flat c1 s) with
+              | Some (newcmd,newstate,newret)  =>
+                match newret with
+                  | Some a => None
+                  | None => Some ((Seq newcmd c2), newstate, None)
+                end
+              | None => Some (c2, s, None)
+      end)
+    | Flat_Skip => None
+    | Flat_Return x => match (get x s) with
+                         | Some ans => Some (Skip, s, Some ans)
+                         | None => None
+                       end
+    | Flat_Declaration x e next =>
+      match (is_declared x s) with
+        | true => None
+        | false =>
+          match (eval_flat_exp e s) with
+            | Value ans => Some (next , (set x ans s), None)
+            | TypeError => None
+          end
+      end
+    | Flat_Assign_var x y =>
+      match (get y s) with
+        | None => None
+        | Some ans => 
+          if (is_declared x s)
+               && (type_matches_op (ret_op (get x s)) (Some (eval_exp e s)))
+          then
+            match (eval_exp e s) with
+              | Value ans => Some (Skip , (set_local x ans s), None)
+              | TypeError => None
+            end
+          else None
+        | Flat_Assign_ptr x' e => match (eval_exp x' s) with
+                                    | Value (Remote_value x) =>
+                                      if (is_declared x s)
+                                           && (type_matches_op (ret_op (get x s)) (Some (eval_exp e s)))
+                                      then
+                               match (eval_exp e s) with
+                                 | Value ans => Some (Skip , (set_remote x ans s), None)
+                                 | TypeError => None
+                          end
+                             else None
+                           | _ => None
+                       end
+    | Flat_If condition thn els =>
+      match (eval_exp condition s) with
+        | Value (Bool_value true) => Some (thn, s, None)
+        | Value (Bool_value false) => Some (els, s, None)
+        | _ => None
+      end
+    | Flat_While condition thn => Some ((If condition (Seq thn cmd) Skip), s, None)
+  end.
