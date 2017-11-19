@@ -262,8 +262,6 @@ Fixpoint next_var (index : var) (e : exp) : var
        | Deref e => next_var (S index) e
      end.
 
-
-
 Fixpoint flatten_exp (index : var) (e : exp) (context : (flat_exp -> flat_com)) : flat_com
   := match e with 
        | Var x => context (Flat_Var x)
@@ -327,22 +325,63 @@ Admitted.
 
 Eval compute in (flatten_exp 1 (Binop ((Binop (Const 7) Plus (Const 15) )) Plus ((Binop (Const 7) Plus (Const 15) )) ) (fun e' => (Flat_Declaration 0 e' (Flat_Return 0)))).
 
-Fixpoint flatten (index : nat) (c : com) : (flat_com, ) :=
-  match c with
-    | Return e =>
-      match (index,e) with
-        | (S index',_) => flatten_exp index' (fun e' => Flat_Return e') e
-        | _ => Flat_Skip
 
+Fixpoint next_var_cmd (index : var) (c : com) : var
+  := match c with 
+       | Return e => next_var index e
+       | Skip => index
+       | Assign_var x e => next_var index e
+       | Assign_ptr x e => next_var index e
+       | If c t e => next_var_cmd (next_var_cmd (next_var index c) t) e
+       | While c t => next_var_cmd (next_var index c) t
+       | Seq s₁ s₂ => next_var_cmd (next_var_cmd index s₁) s₂
+       | Declaration x e s => match (if (Nat.ltb index x) then index else S x) with
+                                | index => next_var_cmd (next_var index e) s
+                              end
+     end.
+
+Fixpoint flatten (index : nat) (c : com) : flat_com :=
+  match c with
+    | Return (Var x) => Flat_Return x
+    | Return e => flatten_exp (S index) e (fun e' => (Flat_Declaration index e' (Flat_Return index)))
+    | Assign_var y (Var x) => Flat_Assign_var y x
+    | Assign_var x e => flatten_exp (S index) e (fun e' => Flat_Declaration index e' (Flat_Assign_var x index))
+    | Declaration x e s => match (next_var index e) with
+                             | m => flatten_exp
+                                      index e
+                                      (fun e' => Flat_Declaration x e' (flatten m s)) end
+    | Assign_ptr y (Var x) => Flat_Assign_ptr y x
+    | Assign_ptr x e => flatten_exp (S index) e (fun e' => Flat_Declaration index e' (Flat_Assign_ptr x index))
+    | If (Var c) t e =>
+      match (next_var_cmd index t) with
+        | m => Flat_If c (flatten index t) (flatten m e)
       end
-        (*
-    | Declaration : var -> exp -> com 
-    | Assign_var : var -> exp -> com
-    | Assign_ptr : exp -> exp -> com
-    | Seq : com -> com -> com
-    | If : exp -> com -> com -> com
-    | While : exp -> com -> com. *)
-    | _ => Flat_Skip
+    | If c t e =>
+      match (next_var (S index) c) with
+        | index' =>
+          flatten_exp
+            (S index) c
+            (fun e' => Flat_Declaration
+                         index e'
+                         (Flat_If index
+                                  match (next_var_cmd index' t) with
+                                    | m => Flat_If index (flatten index' t) (flatten m e)
+                                  end
+                         ))
+      end
+    | While (Var c) t => Flat_While c (flatten index t)
+    | While c t =>
+      match (next_var (S index) c) with
+        | index' =>
+          flatten_exp
+            (S index) c
+            (fun e' => Flat_Declaration
+                         index e' 
+                         (Flat_While index  (flatten index' t)))
+      end
+    | Seq s₁ s₂ =>
+      Flat_Seq (flatten index s₁) (flatten (next_var_cmd index s₁) s₂)
+    | Skip => Flat_Skip
   end.
 
 
