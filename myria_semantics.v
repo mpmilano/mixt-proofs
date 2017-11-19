@@ -1,16 +1,4 @@
-(** * Problem Set 3 *)
 
-(** In class we saw a relational small-step semantics for IMP.
-    Abhishek observed that the small-step semantics could be written as
-    a function instead, since there is no recursion in the 'while'
-    case. (However, there is a loss of extensibility to some
-    nondeterministic features like concurrency.) Are these semantics
-    really equivalent?
-
-    Here is the relational semantics we saw in class:
- *)
-
-(* begin hide *)
 Require Import Bool Arith String List CpdtTactics.
 Open Scope string_scope.
 Open Scope list_scope.
