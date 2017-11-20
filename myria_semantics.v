@@ -250,6 +250,46 @@ Fixpoint step_com_fn (cmd : com) (s : state) : option (com * state * (option val
     | While condition thn => Some ((If condition (Seq thn cmd) Skip), s, None)
   end.
 
+Definition last_index (l : (list (nat * flat_exp))) : nat:=
+  match l return nat with
+    | hd :: tl => (fst (last l hd))
+    | [] => 0
+  end.
+
+Definition last_indexp (l : (prod (list (prod nat flat_exp)) flat_exp)) :=
+  last_index (fst l).
+
+Definition next_index l := S (last_index l).
+
+(* Order: list hd is last declaration, list tail is fst.  2nd elem of outer pair is a varref.*)
+Fixpoint flatten_exp (index : var) (e : exp) : prod (list (prod nat flat_exp)) var
+  := match e with 
+       | Var x => ([], x)
+       | Binop e₁ op e₂ =>
+         match (flatten_exp (S index) e₂) with
+           | (rest_right,right_ref) =>
+             match (flatten_exp (next_index rest_right) e₁) with
+               | (rest_left,left_ref) =>
+                 (((index, Flat_Binop left_ref op right_ref) :: (rest_right ++ rest_left)), index)
+             end
+         end
+       | Not e =>
+         match (flatten_exp (S index) e) with
+           | (rest, var) => ((index, (Flat_Not var))::rest, index)
+         end
+       | Const x => ((index,Flat_Const x)::[],index)
+       | Tt => ((index,Flat_Tt)::[],index)
+       | Ff => ((index,Flat_Ff)::[],index)
+       | Deref e => match (flatten_exp (S index) e) with
+                        | (rest,var) => ((index,(Flat_Deref var))::rest,index)
+                    end
+     end.
+
+Lemma flatten_exp_index_unique : forall e index,
+                                   index > 0 -> 
+                                   NoDup (List.map fst (fst (flatten_exp index e))).
+
+
 Fixpoint next_var (index : var) (e : exp) : var
   := match e with 
        | Var x => index
@@ -262,7 +302,8 @@ Fixpoint next_var (index : var) (e : exp) : var
        | Deref e => next_var (S index) e
      end.
 
-Fixpoint flatten_exp (index : var) (e : exp) (context : (flat_exp -> flat_com)) : flat_com
+
+Fixpoint flatten_exp2 (index : var) (e : exp) (context : (flat_exp -> flat_com)) : flat_com
   := match e with 
        | Var x => context (Flat_Var x)
        | Binop e₁ op e₂ =>
