@@ -292,6 +292,9 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
                     end, System index)
      end.
 
+Lemma flatten_exp'_increases: forall (e : exp) (b : flat_exp) (a index : nat), In (a, b) (fst (flatten_exp' (S index) e)) -> index < a.
+  Admitted.
+
 Lemma flatten_exp'_index_unique : forall e (index : nat),
                                    index > 0 -> 
                                    NoDup (List.map fst (fst (flatten_exp' index e))).
@@ -322,6 +325,7 @@ Definition max_nat a b c :=
   else if Nat.ltb a c then c else a.
 
 Lemma max_nat_correct : forall (a b c : nat), (Nat.ltb a b) = Nat.ltb a (max_nat a b c).
+  
   Admitted.
                                     
 
