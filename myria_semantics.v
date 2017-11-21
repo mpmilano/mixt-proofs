@@ -178,8 +178,6 @@ Fixpoint eval_exp (e:exp) (s:state) : answer :=
         end
   end.
 
-(* end hide *)
-
 
 Inductive imp_type :=
 | Nat_type : imp_type
@@ -202,9 +200,7 @@ Definition type_matches_op l r :=
     | _ => false
   end.
 
-(** ** 1. Give a definition of the same small-step semantics, as a function.
-    Note that a final configuration should step to [None].
-*)
+
 
 Definition ret_op a := match a with | Some a => Some (ret a) | None => None end.
 
@@ -399,10 +395,6 @@ Variable unique_decl_flat : flat_com -> Prop.
 
 Lemma flatten_unique : forall (index : nat) (c : com), ((max_declaration_com c) < 40) -> (index > 40) -> (unique_decl_com c) -> (unique_decl_flat (flatten index c)).
 Admitted.
-
-
-
-(* if we move back to vars being pairs, then we can avoid the problem of ensuring no collisions between user-names and system-names by making left user and right system. i.e. user-right is always 0. *)
 
 Eval compute in (flatten_exp 1 (Binop ((Binop (Const 7) Plus (Const 15) )) Plus ((Binop (Const 7) Plus (Const 15) )) )).
 
