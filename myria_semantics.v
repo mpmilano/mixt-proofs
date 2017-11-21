@@ -285,9 +285,9 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
               end,System index)
          end
        | Not e =>
-         (match (flatten_exp' (S index) e) with
-            | (rest, var) => (index, (Flat_Not var))::rest
-         end, System index)
+         (
+           (index, (Flat_Not (snd (flatten_exp' (S index) e)))):: fst (flatten_exp' (S index) e)
+         , System index)
        | Const x => ((index,Flat_Const x)::[],System index)
        | Tt => ((index,Flat_Tt)::[],System index)
        | Ff => ((index,Flat_Ff)::[],System index)
@@ -296,10 +296,16 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
                     end, System index)
      end.
 
+
+Eval compute in (flatten_exp' 3 (Binop Tt Or (Binop Tt And Ff))).
+
 Lemma flatten_exp'_index_unique : forall e (index : nat),
                                    index > 0 -> 
                                    NoDup (List.map fst (fst (flatten_exp' index e))).
-Admitted.
+Proof. Hint Constructors NoDup. induction e; crush.
+Focus 2.
+assert (NoDup (map fst (fst (flatten_exp' (S index) e)))). apply IHe. auto.
+apply NoDup_cons.
 
 Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, var).
 
