@@ -262,16 +262,12 @@ Fixpoint step_com_fn (cmd : com) (s : state) : option (com * state * (option val
     | While condition thn => Some ((If condition (Seq thn cmd) Skip), s, None)
   end.
 
-Definition last_index index (l : (list (nat * flat_exp))) : nat:=
-  match l return nat with
-    | hd :: tl => (fst (last l hd))
-    | [] => index
+
+Definition next_index' (index : nat) (l : list (prod nat flat_exp)) :=
+  match l with
+    | [] => S index
+    | (hd,_)::_ => S hd
   end.
-
-Definition last_indexp index (l : (prod (list (prod nat flat_exp)) flat_exp)) :=
-  last_index index (fst l).
-
-Definition next_index index l := S (last_index index l).
 
 (* Order: list hd is last declaration, list tail is first.  2nd elem of outer pair is a varref.*)
 Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) var
@@ -280,7 +276,7 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
        | Binop e₁ op e₂ =>
          match (flatten_exp' (S index) e₂) with
            | (rest_right,right_ref) =>
-             (match (flatten_exp' (next_index (S index) rest_right) e₁) with
+             (match (flatten_exp' (next_index' (S index) rest_right) e₁) with
                 | (rest_left,left_ref) => ((index, Flat_Binop left_ref op right_ref)::(rest_right ++ rest_left))
               end,System index)
          end
@@ -302,6 +298,18 @@ Lemma flatten_exp'_index_unique : forall e (index : nat),
 Admitted.
 
 Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, var).
+
+
+Definition last_index index (l : (list (nat * flat_exp))) : nat:=
+  match l return nat with
+    | hd :: tl => (fst (last l hd))
+    | [] => index
+  end.
+
+Definition last_indexp index (l : (prod (list (prod nat flat_exp)) flat_exp)) :=
+  last_index index (fst l).
+
+Definition next_index index l := S (last_index index l).
 
 Lemma flatten_exp'_sequential : forall e index n, index > 0 ->
                                                  S (nth n (List.map fst (fst (flatten_exp' index e))) 0)
