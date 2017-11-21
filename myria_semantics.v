@@ -485,7 +485,7 @@ Fixpoint step_com_flat (cmd : flat_com) (s : state) : option (flat_com * state *
         | _ => None
       end
     | Flat_While condition thn => Some ((Flat_If condition (Flat_Seq thn cmd) Flat_Skip), s, None)
-    (* | Flat_Assign_ptr x' e => match (get x' s) with
+    | Flat_Assign_ptr x' e => match (get x' s) with
                                 | Some (Remote_value x) =>
                                   if (is_declared x s)
                                   then
@@ -494,7 +494,6 @@ Fixpoint step_com_flat (cmd : flat_com) (s : state) : option (flat_com * state *
                                       | None => None
                                     end
                                   else None
-                                | None => None
-                       end *)
-    | _ => None
+                                | _ => None
+                       end
   end.
