@@ -280,21 +280,20 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
        | Binop e₁ op e₂ =>
          match (flatten_exp' (S index) e₂) with
            | (rest_right,right_ref) =>
-             match (flatten_exp' (next_index (S index) rest_right) e₁) with
-               | (rest_left,left_ref) =>
-                 (((index, Flat_Binop left_ref op right_ref)::(rest_right ++ rest_left)), System index)
-             end
+             (match (flatten_exp' (next_index (S index) rest_right) e₁) with
+                | (rest_left,left_ref) => ((index, Flat_Binop left_ref op right_ref)::(rest_right ++ rest_left))
+              end,System index)
          end
        | Not e =>
-         match (flatten_exp' (S index) e) with
-           | (rest, var) => ((index, (Flat_Not var))::rest, System index)
-         end
+         (match (flatten_exp' (S index) e) with
+            | (rest, var) => (index, (Flat_Not var))::rest
+         end, System index)
        | Const x => ((index,Flat_Const x)::[],System index)
        | Tt => ((index,Flat_Tt)::[],System index)
        | Ff => ((index,Flat_Ff)::[],System index)
-       | Deref e => match (flatten_exp' (S index) e) with
-                        | (rest,var) => ((index,(Flat_Deref var))::rest,System index)
-                    end
+       | Deref e => (match (flatten_exp' (S index) e) with
+                        | (rest,var) => (index,(Flat_Deref var))::rest
+                    end, System index)
      end.
 
 Lemma flatten_exp'_index_unique : forall e (index : nat),
@@ -302,15 +301,17 @@ Lemma flatten_exp'_index_unique : forall e (index : nat),
                                    NoDup (List.map fst (fst (flatten_exp' index e))).
 Admitted.
 
-Lemma flatten_exp_sequential : forall e index n, index > 0 ->
-                                                 S (nth n (List.map fst (fst (flatten_exp index e))) 0)
-                                                 = (nth (S n) (List.map fst (fst (flatten_exp index e))) 1).
+Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, var).
+
+Lemma flatten_exp'_sequential : forall e index n, index > 0 ->
+                                                 S (nth n (List.map fst (fst (flatten_exp' index e))) 0)
+                                                 = (nth (S n) (List.map fst (fst (flatten_exp' index e))) 1).
 Admitted.
 
 
 Fixpoint declare_everything (l : (list (prod nat flat_exp))) (c : flat_com)  : flat_com :=
   match l return flat_com with
-    | ((var,exp)::rest) => Flat_Declaration var exp (declare_everything rest c)
+    | ((var,exp)::rest) => Flat_Declaration (System var) exp (declare_everything rest c)
     | [] => c
   end.
 
@@ -323,15 +324,37 @@ Lemma max_nat_correct : forall (a b c : nat), (Nat.ltb a b) = Nat.ltb a (max_nat
   Admitted.
                                     
 
-Definition next_var_cmd (index : nat)  (c : flat_com) := index.
-(*
-  match c with
-    | Flat_Return x => S x
-    | Flat_Assign_var x y => if Nat.ltb x y then S y else S x
-    | Flat_Assign_ptr x y => if Nat.ltb x y then S y else S x
-    | Flat_Declaration x e s => S (max_nat x (next_var_cmd index e) (next_var_cmd index s))
-    | Flat_If x e s => S (max_nat x (next_var_cmd index e) (next_var_cmd index s))
-*)
+Definition next_var2 (a b : var) (index : nat) :=
+  match (a,b) with
+    | (System a, User _) => S a
+    | (System a, System b) => if Nat.ltb a b then S b else S a
+    | (User _, System a) => S a
+    | (User _, User _) => index
+  end.
+
+
+Definition next_var3 (a b c: var) (index : nat) :=
+  next_var2 (System (next_var2 a b index)) c index.
+
+Definition next_var a index := match a with | System a => S a | User _ => index end.
+
+Fixpoint next_var_exp (index : nat)  (e : flat_exp) :=
+  match e with
+    | _ => 0
+  end.
+
+Fixpoint next_var_cmd (index : nat)  (c : flat_com) := 
+  match c return nat -> nat with
+    | Flat_Return x => next_var x
+    | Flat_Assign_var x y => next_var2 x y 
+    | Flat_Assign_ptr x y => next_var2 x y 
+    | Flat_Declaration x e s => next_var3 x (next_var_exp index e) (next_var_cmd index s)
+    | Flat_If x e s => next_var3 x (next_var_cmd index e) (next_var_cmd index s)
+    | Flat_While c t => next_var2 c (next_var_cmd index t) 
+    | Flat_Seq s₁ s₂ => next_var2 (next_var_cmd index s₁) (next_var_cmd index s₂)
+    | Flat_Skip => (fun y => y)
+  end index.
+
   
 Fixpoint flatten (index : nat) (c : com) : flat_com :=
   match c with
