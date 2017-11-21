@@ -295,16 +295,22 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
 
 Eval compute in (flatten_exp' 3 (Binop Tt Or (Binop Tt And Ff))).
 
-Lemma flatten_exp'_increases: forall (e : exp) (b : flat_exp) (a index : nat), In (a, b) (fst (flatten_exp' (S index) e)) -> index < a.
+Lemma flatten_exp'_increases: forall (e : exp) (a index : nat), In a (List.map fst (fst (flatten_exp' (S index) e))) -> index < a.
   Admitted.
 
 Lemma flatten_exp'_index_unique : forall e (index : nat),
                                    index > 0 -> 
                                    NoDup (List.map fst (fst (flatten_exp' index e))).
-Proof. Hint Constructors NoDup. induction e; crush.
-Focus 2.
-assert (NoDup (map fst (fst (flatten_exp' (S index) e)))). apply IHe. auto.
-apply NoDup_cons.
+Proof.
+  Hint Constructors NoDup.
+  induction e; crush.
+  - admit.
+  -  assert (forall a, In a (map fst (fst (flatten_exp' (S index) e))) -> index < a) by (intro a; apply (flatten_exp'_increases e a index)).
+       assert (NoDup (map fst (fst (flatten_exp' (S index) e)))) by crush.
+       apply NoDup_cons; crush.
+       assert (index < index) by (apply (H0 index H2)); crush.
+  - admit.
+Admitted.
 
 Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, var).
 
@@ -325,14 +331,6 @@ Fixpoint declare_everything (l : (list (prod nat flat_exp))) (c : flat_com)  : f
     | [] => c
   end.
 
-Definition max_nat a b c :=
-  if Nat.ltb a b
-  then if Nat.ltb b c then c else b
-  else if Nat.ltb a c then c else a.
-
-Lemma max_nat_correct : forall (a b c : nat), (Nat.ltb a b) = Nat.ltb a (max_nat a b c).
-  
-  Admitted.
                                     
 
 Definition next_var2 (a b : var) (index : nat) :=
