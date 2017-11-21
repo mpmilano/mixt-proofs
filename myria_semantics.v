@@ -323,23 +323,57 @@ Definition next_var_cmd (index : nat)  (c : flat_com) := index.
     end.
 (* if we move back to vars being pairs, then we can avoid the problem of ensuring no collisions between user-names and system-names by making left user and right system. i.e. user-right is always 0. *)
 
-Eval compute in (flatten_exp 1 (Binop ((Binop (Const 7) Plus (Const 15) )) Plus ((Binop (Const 7) Plus (Const 15) )) ) (fun e' => (Flat_Declaration 0 e' (Flat_Return 0)))).
+Eval compute in (flatten_exp 1 (Binop ((Binop (Const 7) Plus (Const 15) )) Plus ((Binop (Const 7) Plus (Const 15) )) )).
 
 
-Fixpoint step_com_flat (cmd : com_flat) (s : state) : option (com * state * (option value)) :=
+Fixpoint eval_flat_exp (e:flat_exp) (s:state) : answer := 
+  match e with 
+    | Flat_Const n => ret (Nat_value n)
+    | Flat_Var x => match (get x s) with
+                      | Some e => ret e
+                      | None => TypeError
+                    end
+    | Flat_Deref x =>
+      match (get x s) with
+        | Some (Remote_value x) =>
+          match (get x s) with | None => TypeError
+                            | Some a => ret a
+          end
+        | _ => TypeError
+      end
+    | Flat_Binop e1 b e2 =>
+      match (get e1 s) with
+        | Some (Nat_value _fst) =>
+          match (get e2 s) with
+            | Some (Nat_value _snd) => ret (Nat_value ((eval_binop b) _fst _snd))
+            | _ => TypeError
+          end
+        | _ => TypeError
+      end
+    | Flat_Tt => ret (Bool_value true)
+    | Flat_Ff => ret (Bool_value false)
+    | Flat_Not b =>
+      match (get b s) with
+        | Some (Bool_value tmp) => ret (Bool_value (negb tmp))
+        | _ => TypeError
+      end
+  end.
+
+
+Fixpoint step_com_flat (cmd : flat_com) (s : state) : option (flat_com * state * (option value)) :=
   match cmd with
     | Flat_Seq c1 c2 =>
       (match (step_com_flat c1 s) with
               | Some (newcmd,newstate,newret)  =>
                 match newret with
                   | Some a => None
-                  | None => Some ((Seq newcmd c2), newstate, None)
+                  | None => Some ((Flat_Seq newcmd c2), newstate, None)
                 end
-              | None => Some (c2, s, None)
+              | _ => Some (c2, s, None)
       end)
     | Flat_Skip => None
     | Flat_Return x => match (get x s) with
-                         | Some ans => Some (Skip, s, Some ans)
+                         | Some ans => Some (Flat_Skip, s, Some ans)
                          | None => None
                        end
     | Flat_Declaration x e next =>
@@ -352,34 +386,34 @@ Fixpoint step_com_flat (cmd : com_flat) (s : state) : option (com * state * (opt
           end
       end
     | Flat_Assign_var x y =>
-      match (get y s) with
+      match (get x s) with
         | None => None
         | Some ans => 
           if (is_declared x s)
-               && (type_matches_op (ret_op (get x s)) (Some (eval_exp e s)))
           then
-            match (eval_exp e s) with
-              | Value ans => Some (Skip , (set_local x ans s), None)
-              | TypeError => None
+            match (get y s) with
+              | Some ans => Some (Flat_Skip , (set_local x ans s), None)
+              | None => None
             end
           else None
-        | Flat_Assign_ptr x' e => match (eval_exp x' s) with
-                                    | Value (Remote_value x) =>
-                                      if (is_declared x s)
-                                           && (type_matches_op (ret_op (get x s)) (Some (eval_exp e s)))
-                                      then
-                               match (eval_exp e s) with
-                                 | Value ans => Some (Skip , (set_remote x ans s), None)
-                                 | TypeError => None
-                          end
-                             else None
-                           | _ => None
-                       end
+      end
     | Flat_If condition thn els =>
-      match (eval_exp condition s) with
-        | Value (Bool_value true) => Some (thn, s, None)
-        | Value (Bool_value false) => Some (els, s, None)
+      match (get condition s) with
+        | Some (Bool_value true) => Some (thn, s, None)
+        | Some (Bool_value false) => Some (els, s, None)
         | _ => None
       end
-    | Flat_While condition thn => Some ((If condition (Seq thn cmd) Skip), s, None)
+    | Flat_While condition thn => Some ((Flat_If condition (Flat_Seq thn cmd) Flat_Skip), s, None)
+    (* | Flat_Assign_ptr x' e => match (get x' s) with
+                                | Some (Remote_value x) =>
+                                  if (is_declared x s)
+                                  then
+                                    match (get e s) with
+                                      | Some ans => Some (Flat_Skip , (set_remote x ans s), None)
+                                      | None => None
+                                    end
+                                  else None
+                                | None => None
+                       end *)
+    | _ => None
   end.
