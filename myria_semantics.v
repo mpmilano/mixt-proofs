@@ -281,9 +281,9 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
               end,System index)
          end
        | Not e =>
-         (
-           (index, (Flat_Not (snd (flatten_exp' (S index) e)))):: fst (flatten_exp' (S index) e)
-         , System index)
+         (match (flatten_exp' (S index) e) with
+           | (rest,ref) => (index, (Flat_Not ref))::rest
+         end, System index)
        | Const x => ((index,Flat_Const x)::[],System index)
        | Tt => ((index,Flat_Tt)::[],System index)
        | Ff => ((index,Flat_Ff)::[],System index)
@@ -295,6 +295,8 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
 
 Eval compute in (flatten_exp' 3 (Binop Tt Or (Binop Tt And Ff))).
 
+Ltac eliminate_let := match goal with | [|- context [let (_,_) := ?e in _]] => remember e as destruct_prep; destruct e; subst end.
+
 Lemma flatten_exp'_increases: forall (e : exp) (a index : nat), In a (List.map fst (fst (flatten_exp' (S index) e))) -> index < a.
   Admitted.
 
@@ -302,15 +304,16 @@ Lemma flatten_exp'_index_unique : forall e (index : nat),
                                    index > 0 -> 
                                    NoDup (List.map fst (fst (flatten_exp' index e))).
 Proof.
-  Hint Constructors NoDup.
-  induction e; crush.
-  - admit.
-  -  assert (forall a, In a (map fst (fst (flatten_exp' (S index) e))) -> index < a) by (intro a; apply (flatten_exp'_increases e a index)).
-       assert (NoDup (map fst (fst (flatten_exp' (S index) e)))) by crush.
-       apply NoDup_cons; crush.
-       assert (index < index) by (apply (H0 index H2)); crush.
-  - admit.
+  Hint Constructors NoDup.  
+  induction e; crush;
+  (* single recursion case *)
+  try (assert (forall a, In a (map fst (fst (flatten_exp' (S index) e))) -> index < a) by (intro a; apply (flatten_exp'_increases e a index));
+       assert (NoDup (map fst (fst (flatten_exp' (S index) e)))) by crush;
+       eliminate_let;
+       apply NoDup_cons; crush;
+       assert (index < index) by (apply (H0 index H2)); crush; tauto).
 Admitted.
+
 
 Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, var).
 
