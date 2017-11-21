@@ -382,8 +382,8 @@ Fixpoint flatten (index : nat) (c : com) : flat_com :=
                            declare_everything lst (Flat_Declaration x (Flat_Var ref) (flatten next_ind s) )
     | If c t e => let (lst,ref) := flatten_exp index c in
                   let next_ind := next_index index lst in
-                  (* Note: t and e not disjoin in this approach.  might be an issue?*)
-                  declare_everything lst (Flat_If ref (flatten next_ind t) (flatten next_ind e) )
+                  let flat_t := (flatten next_ind t) in
+                  declare_everything lst (Flat_If ref flat_t (flatten (next_var_cmd next_ind flat_t) e) )
     | While c t => let (lst,ref) := flatten_exp index c in
                    let next_ind := next_index index lst in
                    declare_everything lst (Flat_While ref (flatten next_ind t) )
