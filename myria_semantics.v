@@ -52,7 +52,7 @@ Inductive flat_com : Type :=
 | Flat_Return : var -> flat_com
 | Flat_Declaration : var -> flat_exp -> flat_com -> flat_com 
 | Flat_Assign_var : var -> var -> flat_com
-| Flat_Assign_ptr : exp -> var -> flat_com
+| Flat_Assign_ptr : var -> var -> flat_com
 | Flat_Seq : flat_com -> flat_com -> flat_com
 | Flat_If : var -> flat_com -> flat_com -> flat_com
 | Flat_While : var -> flat_com -> flat_com.
@@ -340,7 +340,13 @@ Definition next_var a index := match a with | System a => S a | User _ => index 
 
 Fixpoint next_var_exp (index : nat)  (e : flat_exp) :=
   match e with
-    | _ => 0
+    | Flat_Const _ => S index
+    | Flat_Var a => next_var a index
+    | Flat_Binop a op b => next_var2 a b index
+    | Flat_Tt => S index
+    | Flat_Ff => S index
+    | Flat_Not a => next_var a index
+    | Flat_Deref a => next_var a index
   end.
 
 Fixpoint next_var_cmd (index : nat)  (c : flat_com) := 
@@ -348,10 +354,10 @@ Fixpoint next_var_cmd (index : nat)  (c : flat_com) :=
     | Flat_Return x => next_var x
     | Flat_Assign_var x y => next_var2 x y 
     | Flat_Assign_ptr x y => next_var2 x y 
-    | Flat_Declaration x e s => next_var3 x (next_var_exp index e) (next_var_cmd index s)
-    | Flat_If x e s => next_var3 x (next_var_cmd index e) (next_var_cmd index s)
-    | Flat_While c t => next_var2 c (next_var_cmd index t) 
-    | Flat_Seq s₁ s₂ => next_var2 (next_var_cmd index s₁) (next_var_cmd index s₂)
+    | Flat_Declaration x e s => next_var3 x (System (next_var_exp index e)) (System (next_var_cmd index s))
+    | Flat_If x e s => next_var3 x (System (next_var_cmd index e)) (System (next_var_cmd index s))
+    | Flat_While c t => next_var2 c (System (next_var_cmd index t)) 
+    | Flat_Seq s₁ s₂ => next_var2 (System (next_var_cmd index s₁)) (System (next_var_cmd index s₂))
     | Flat_Skip => (fun y => y)
   end index.
 
@@ -363,7 +369,9 @@ Fixpoint flatten (index : nat) (c : com) : flat_com :=
     | Assign_var y e => let (lst,ref) := flatten_exp index e in
                         declare_everything lst (Flat_Assign_var y ref)
     | Assign_ptr y e => let (lst,ref) := flatten_exp index e in
-                        declare_everything lst (Flat_Assign_ptr y ref)
+                        let index' := match ref with | System x => S x | User _ => index end in
+                        let (lst2,ref2) := flatten_exp index' y in
+                        declare_everything lst (declare_everything lst2 (Flat_Assign_ptr ref2 ref))
     | Declaration x e s => let (lst,ref) := flatten_exp index e in
                            let next_ind := next_index index lst in
                            declare_everything lst (Flat_Declaration x (Flat_Var ref) (flatten next_ind s) )
