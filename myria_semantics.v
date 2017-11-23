@@ -258,14 +258,12 @@ Fixpoint step_com_fn (cmd : com) (s : state) : option (com * state * (option val
     | While condition thn => Some ((If condition (Seq thn cmd) Skip), s, None)
   end.
 
-Definition last_index index (l : (list (nat * flat_exp))) : nat:=
+Definition last_index index (l : (list nat )) : nat:=
   match l return nat with
-    | hd :: tl => (fst (last l hd))
+    | hd :: tl => (last l hd)
     | [] => index
   end.
 
-Definition last_indexp index (l : (prod (list (prod nat flat_exp)) flat_exp)) :=
-  last_index index (fst l).
 
 Definition next_index' index l := S (last_index index l).
 
@@ -274,46 +272,90 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
   := match e with 
        | Var x => ([], x)
        | Binop e₁ op e₂ =>
-         match (flatten_exp' (S index) e₂) with
-           | (rest_right,right_ref) =>
-             (match (flatten_exp' (next_index' (S index) rest_right) e₁) with
-                | (rest_left,left_ref) => ((index, Flat_Binop left_ref op right_ref)::(rest_right ++ rest_left))
-              end,System index)
-         end
+             (((index, Flat_Binop (snd (flatten_exp' (next_index' (S index) (map fst (fst (flatten_exp' (S index) e₂)))) e₁)) op (snd (flatten_exp' (S index) e₂)))::((fst (flatten_exp' (S index) e₂)) ++ (fst (flatten_exp' (next_index' (S index) (map fst (fst (flatten_exp' (S index) e₂)))) e₁))))
+              ,System index)
+        
        | Not e =>
-         (match (flatten_exp' (S index) e) with
-           | (rest,ref) => (index, (Flat_Not ref))::rest
-         end, System index)
+         (
+           (index, (Flat_Not (snd (flatten_exp' (S index) e)))):: fst (flatten_exp' (S index) e)
+         , System index)
        | Const x => ((index,Flat_Const x)::[],System index)
        | Tt => ((index,Flat_Tt)::[],System index)
        | Ff => ((index,Flat_Ff)::[],System index)
-       | Deref e => (match (flatten_exp' (S index) e) with
-                        | (rest,var) => (index,(Flat_Deref var))::rest
-                    end, System index)
+       | Deref e => ( (index,(Flat_Deref (snd (flatten_exp' (S index) e))))::(fst (flatten_exp' (S index) e)),
+                    System index)
      end.
 
 
 Eval compute in (flatten_exp' 3 (Binop Tt Or (Binop Tt And Ff))).
 
-Ltac eliminate_let := match goal with | [|- context [let (_,_) := ?e in _]] => remember e as destruct_prep; destruct e; subst end.
 
-Lemma flatten_exp'_increases: forall (e : exp) (a index : nat), In a (List.map fst (fst (flatten_exp' (S index) e))) -> index < a.
-  Admitted.
+Definition test: list nat := nil.
+Eval compute in next_index' 1 test.
+Eval compute in next_index' 2  (map (fun x=> S x) test).
+
+Lemma last_append_head: forall {A:Type}(a:A) (l:list A),
+last l a = last (a::l) a.
+Proof. induction l; crush. Qed.
+
+Lemma next_index'_index: forall  l index,
+(next_index' (S index) (map (fun x : nat => S x) l))
+            =
+ S (next_index' index l).
+
+Proof. induction l; crush.
+ unfold next_index'. unfold last_index. 
+repeat rewrite <- last_append_head. 
+assert (forall (t:list nat)(b:nat),last (map (fun x : nat => S x) t) (S b) = (S (last t b))).
+induction t; crush. destruct t. Focus 2.
+
+
+assert (forall (h:nat) (l:list nat), map (fun x : nat => S x) (h :: l)
+= (S h) :: map (fun x : nat => S x) l).
+
+induction l; crush.
+rewrite H. auto. auto. auto.
+Qed.
+
+
+Lemma flatten_exp'_index: forall (e:exp) (index :nat),
+(map fst (fst (flatten_exp' (S index) e))) = (map (fun x=>S x)
+(map fst (fst (flatten_exp' index e)))).
+Proof. induction e; crush. 
+ repeat rewrite map_app. crush.
+ remember (map (fun x : nat => S x)
+                    (map fst (fst (flatten_exp' index e2))))
+ as temp.
+ rewrite next_index'_index. crush.
+Qed.
+
+Require Import Omega.
+Lemma S_in: forall a l,  In (S a) (map (fun x=> S x) l)-> In a l.
+Proof. induction l; crush.
+Qed.
+
+Lemma flatten_exp'_increases: 
+forall (e : exp) (a index : nat), 
+In a  (map fst (fst (flatten_exp' (S index) e))) -> index < a.
+
+Proof. induction e; crush. Focus 2.
+ rewrite -> flatten_exp'_index in H0.
+ destruct a. Focus 2. apply S_in in H0. rename a into a'.
+ rename index into index'. apply IHe in H0. auto.
+ assert (forall (l:list nat), ~ In 0 (map (fun x => S x) l)).
+ induction l; crush. contradict H0. auto.
+ Admitted.
+
+
 
 Lemma flatten_exp'_index_unique : forall e (index : nat),
                                    index > 0 -> 
                                    NoDup (List.map fst (fst (flatten_exp' index e))).
-Proof.
-  Hint Constructors NoDup.  
-  induction e; crush;
-  (* single recursion case *)
-  try (assert (forall a, In a (map fst (fst (flatten_exp' (S index) e))) -> index < a) by (intro a; apply (flatten_exp'_increases e a index));
-       assert (NoDup (map fst (fst (flatten_exp' (S index) e)))) by crush;
-       eliminate_let;
-       apply NoDup_cons; crush;
-       assert (index < index) by (apply (H0 index H2)); crush; tauto).
+Proof. Hint Constructors NoDup. induction e; crush.
+Focus 2.
+assert (NoDup (map fst (fst (flatten_exp' (S index) e)))). apply IHe. auto.
+apply NoDup_cons.
 Admitted.
-
 
 Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, var).
 
@@ -334,6 +376,14 @@ Fixpoint declare_everything (l : (list (prod nat flat_exp))) (c : flat_com)  : f
     | [] => c
   end.
 
+Definition max_nat a b c :=
+  if Nat.ltb a b
+  then if Nat.ltb b c then c else b
+  else if Nat.ltb a c then c else a.
+
+Lemma max_nat_correct : forall (a b c : nat), (Nat.ltb a b) = Nat.ltb a (max_nat a b c).
+  
+  Admitted.
                                     
 
 Definition next_var2 (a b : var) (index : nat) :=
