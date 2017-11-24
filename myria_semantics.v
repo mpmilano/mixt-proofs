@@ -317,6 +317,21 @@ induction l; crush.
 rewrite H. auto. auto. auto.
 Qed.
 
+Lemma last_drop_head: forall (l: list nat)(a n0 n:nat),
+last (a::n0::l) n = last (n0::l) n.
+Proof.
+induction l; crush.
+Qed.
+ 
+Lemma last_in: forall (n:nat) (l: list nat),In (last (n :: l) n) (n :: l).
+Proof. induction l. compute. auto. rewrite <- last_append_head.
+ rewrite <- last_append_head in IHl.
+ destruct l. compute. auto.
+ assert (last (a::n0::l) n = last (n0::l) n). apply last_drop_head.
+ rewrite H.
+ apply in_inv in IHl. destruct IHl. crush. crush.
+Qed.
+ 
 
 Lemma flatten_exp'_index: forall (e:exp) (index :nat),
 (map fst (fst (flatten_exp' (S index) e))) = (map (fun x=>S x)
@@ -334,6 +349,13 @@ Lemma S_in: forall a l,  In (S a) (map (fun x=> S x) l)-> In a l.
 Proof. induction l; crush.
 Qed.
 
+
+Lemma in_S: forall a l, In a l -> In (S a) (map (fun x=> S x) l).
+Proof. induction l; crush.
+Qed.
+
+Lemma in_S_iff: forall a l, In a l <-> In (S a) (map (fun x=> S x) l).
+Proof. split. apply in_S. apply S_in. Qed.
 Lemma flatten_exp'_increases: 
 forall (e : exp) (a index : nat), 
 In a  (map fst (fst (flatten_exp' (S index) e))) -> index < a.
@@ -344,9 +366,45 @@ Proof. induction e; crush. Focus 2.
  rename index into index'. apply IHe in H0. auto.
  assert (forall (l:list nat), ~ In 0 (map (fun x => S x) l)).
  induction l; crush. contradict H0. auto.
- Admitted.
-
-
+ Focus 2.
+  rewrite -> flatten_exp'_index in H0.
+ destruct a. Focus 2. apply S_in in H0. rename a into a'.
+ rename index into index'. apply IHe in H0. auto.
+ assert (forall (l:list nat), ~ In 0 (map (fun x => S x) l)).
+ induction l; crush. contradict H0. auto.
+ repeat rewrite map_app in H0.
+ apply in_app_or in H0. destruct H0.
+ rename index into index'. apply IHe2 in H. omega.
+ rewrite flatten_exp'_index in H.
+ rewrite next_index'_index in H.
+ rewrite flatten_exp'_index in H.
+ destruct a. Focus 2. apply S_in in H.
+ rewrite flatten_exp'_index in H.
+ rewrite next_index'_index in H. 
+ apply IHe1 in H.
+ remember (map fst (fst (flatten_exp' index e2))) as l.
+ rename index into i.
+ rename a into h.
+ assert  (forall c  : nat,
+       In c (map fst (fst (flatten_exp' i e2))) ->
+       i < S c). 
+ intros. apply in_S in H0. rewrite <- flatten_exp'_index in H0. apply IHe2. auto.
+(*should be derivable from IHe2*)
+ unfold next_index' in H. unfold last_index in H. rewrite <- Heql in H0.
+ destruct l. omega.
+ assert (In (last (n :: l) n) (n::l)). apply last_in.
+  apply H0 in H1. omega.
+ assert (forall (l:list nat), ~ In 0 (map (fun x => S x) l)).
+ induction l; crush. 
+ assert (~ In 0 (map (fun x : nat => S x)
+         (map fst
+            (fst
+               (flatten_exp'
+                  (next_index' (S index)
+                     (map fst
+                        (fst (flatten_exp' (S index) e2))))
+                  e1))))). apply H0. congruence.
+Qed.
 
 Lemma flatten_exp'_index_unique : forall e (index : nat),
                                    index > 0 -> 
