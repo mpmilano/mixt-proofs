@@ -265,8 +265,7 @@ Definition last_index index (l : (list nat )) : nat:=
   end.
 
 
-Definition next_index' index l := S (last_index index l).
-
+Definition next_index' index l := S (last_index index l). 
 (* Order: list hd is last declaration, list tail is first.  2nd elem of outer pair is a varref.*)
 Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) var
   := match e with 
@@ -304,7 +303,7 @@ Lemma next_index'_index: forall  l index,
  S (next_index' index l).
 
 Proof. induction l; crush.
- unfold next_index'. unfold last_index. 
+ unfold next_index'. unfold last_index.
 repeat rewrite <- last_append_head. 
 assert (forall (t:list nat)(b:nat),last (map (fun x : nat => S x) t) (S b) = (S (last t b))).
 induction t; crush. destruct t. Focus 2.
@@ -406,6 +405,136 @@ Proof. induction e; crush. Focus 2.
                   e1))))). apply H0. congruence.
 Qed.
 
+Eval compute in (map fst (fst (flatten_exp' 0 (Binop Tt Or (Binop Tt And Ff))))).
+
+Fixpoint is_sequential (l: list nat) : Prop :=
+  match l with 
+  | [] => True
+  | h :: t => match t with
+                | [] => True
+                | h0 :: t0 => h0 = S h /\ is_sequential t
+              end
+  end.
+
+Lemma S_is_sequential: forall (l:list nat),
+ is_sequential l -> is_sequential (map (fun x=> S x) l).
+Proof.
+  induction l ; crush. induction l; crush.
+Qed.
+
+Lemma first_is_index : forall e index h t,
+h::t=(map fst (fst (flatten_exp' index e))) -> index = h.
+induction e; crush.
+Qed.
+
+Lemma last_default_irrelevant : forall (n a:nat)( l:list nat),
+  last (n::l) a = last (n::l) n.
+Proof. induction l; crush. destruct l; auto.
+Qed.
+Lemma seq_concat_h: forall l1 n1 ,
+  is_sequential (n1::l1) 
+   -> is_sequential ((n1::l1)++[next_index' (S n1) (n1::l1) ]).
+
+Proof.
+  induction l1 as [|l1' a]; crush.
+  destruct a. simpl. split. compute. auto. auto.
+ assert ((n :: a) ++ [next_index' (S n1) (n1 :: S n1 :: n :: a)]=
+n :: (a ++ [next_index' (S n1) (n1 :: S n1 :: n :: a)])).
+ auto.
+   rewrite H. split. destruct H1. auto.
+   apply IHa in H1.
+ assert ( (n :: a) ++ [next_index' (S (S n1)) (S n1 :: n :: a)]
+  =  n :: (a ++ [next_index' (S (S n1)) (S n1 :: n :: a)])). auto.
+ rewrite H0 in H1.
+  assert (next_index' (S (S n1)) (S n1 :: n :: a)=next_index' (S n1) (n1 :: S n1 :: n :: a)).
+  unfold next_index'. unfold last_index.  repeat rewrite last_drop_head.
+  repeat rewrite last_default_irrelevant.
+  
+ Hint Resolve last_default_irrelevant. auto.
+ rewrite <- H2.  destruct H1. auto.
+ Qed.
+
+Lemma seq_concat : forall (a:nat)(l1 l2: list nat),
+  is_sequential (l1++[a]) -> is_sequential (a::l2) ->
+  is_sequential (l1++(a::l2)).
+Proof.
+  induction l1; crush. 
+  destruct (l1 ++ a :: l2) eqn: Q. auto.
+  destruct l1 eqn:Q2. simpl in *. inject Q. crush.
+  simpl in Q. inject Q.
+  split. crush. apply IHl1.
+  destruct((n :: l0) ++ [a]). auto. destruct H; auto.
+  destruct l2; auto.
+  Qed.
+
+(*This sequential lemma is not true!!*)
+
+Lemma flatten_exp'_sequential : forall e index ,
+  is_sequential (map fst (fst (flatten_exp' index e))).
+Proof. induction e; crush.
+  Focus 2. rewrite flatten_exp'_index.
+  remember (map fst (fst (flatten_exp' index e))) as l.
+  destruct l. simpl; auto.
+  rename index into i.
+  assert (is_sequential ( map fst (fst (flatten_exp' i e)))).
+  apply IHe.
+  rewrite <- Heql in H.  
+ assert (forall (h:nat) (l:list nat), map (fun x : nat => S x) (h :: l)
+= (S h) :: map (fun x : nat => S x) l).
+  induction l; crush.
+  rewrite H0. split.
+  assert (n=i). apply first_is_index in Heql. auto. auto.
+  rewrite <- H0. apply S_is_sequential. auto.
+    Focus 2. rewrite flatten_exp'_index.
+  remember (map fst (fst (flatten_exp' index e))) as l.
+  destruct l. simpl; auto.
+  rename index into i.
+  assert (is_sequential ( map fst (fst (flatten_exp' i e)))).
+  apply IHe.
+  rewrite <- Heql in H.  
+ assert (forall (h:nat) (l:list nat), map (fun x : nat => S x) (h :: l)
+= (S h) :: map (fun x : nat => S x) l).
+  induction l; crush.
+  rewrite H0. split.
+  assert (n=i). apply first_is_index in Heql. auto. auto.
+  rewrite <- H0. apply S_is_sequential. auto.
+  (*hard case*)
+  repeat rewrite map_app.
+  remember (map fst (fst (flatten_exp' (S index) e2)))  as l1.
+  destruct l1 eqn:Q1. rename index into i.
+  Eval compute in flatten_exp' 0 (Binop (Binop (Var (User 3)) And Tt) And (Binop (Var (User 4)) And Tt)).
+  simpl. unfold next_index'. unfold last_index.
+  destruct (map fst (fst (flatten_exp' (S (S i)) e1))) eqn:Q2.
+  auto. split. symmetry in Q2. apply first_is_index in Q2.
+  remember (map fst
+    (fst (flatten_exp' (S index) e2) ++
+     fst
+       (flatten_exp'
+          (next_index' (S index)
+             (map fst (fst (flatten_exp' (S index) e2)))) e1))) as l.
+  destruct l eqn:Q1. auto.
+  split.
+
+  Focus 2.
+  rewrite map_app in Heql.
+  remember (map fst (fst (flatten_exp' (S index) e2)) )as l1.
+  assert (is_sequential l1). rewrite Heql1. auto.
+  assert (is_sequential (l1++[(next_index' (S index) l1)])).
+  destruct l1 eqn:Q. compute; auto.
+  apply first_is_index in Heql1. rewrite Heql1.
+  apply seq_concat_h. auto.
+  remember (map fst
+         (fst (flatten_exp' (next_index' (S index) l1) e1))) as l2.
+  assert (is_sequential l2).
+  rewrite Heql2; auto. rewrite Heql.
+  destruct l2. assert (forall l1:list nat, l1++[]=l1). induction l2; crush. rewrite H2. auto.
+  apply first_is_index in Heql2. rewrite Heql2 in H0.
+  apply seq_concat; auto. 
+  rewrite map_app in Heql.
+  destruct(  map fst (fst (flatten_exp' (S index) e2))) eqn:Q2.
+  unfold next_index' in Heql. unfold last_index in Heql.
+  simpl in Heql. apply first_is_index in Heql.
+  Eval compute in flatten_exp' 0 (Var (User 3)).
 Lemma flatten_exp'_index_unique : forall e (index : nat),
                                    index > 0 -> 
                                    NoDup (List.map fst (fst (flatten_exp' index e))).
