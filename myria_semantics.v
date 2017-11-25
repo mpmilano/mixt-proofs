@@ -271,7 +271,17 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
   := match e with 
        | Var x => ([], x)
        | Binop e₁ op e₂ =>
-             (((index, Flat_Binop (snd (flatten_exp' (next_index' (S index) (map fst (fst (flatten_exp' (S index) e₂)))) e₁)) op (snd (flatten_exp' (S index) e₂)))::((fst (flatten_exp' (S index) e₂)) ++ (fst (flatten_exp' (next_index' (S index) (map fst (fst (flatten_exp' (S index) e₂)))) e₁))))
+             
+             ( (index, Flat_Binop (snd (flatten_exp' (next_index' (S index) 
+                                                     (map fst (fst (flatten_exp' (S index) e₂))))
+                                                      e₁))
+                                   op
+                                  (snd (flatten_exp' (S index) e₂)))
+               ::match (map fst (fst (flatten_exp' (S index) e₂))) with
+                 | [] => (fst (flatten_exp' (S index) e₁)) 
+                 | _::_ => (fst (flatten_exp' (S index) e₂)) 
+                         ++ (fst (flatten_exp' (next_index' (S index) (map fst (fst (flatten_exp' (S index) e₂)))) e₁))
+                 end
               ,System index)
         
        | Not e =>
@@ -332,14 +342,22 @@ Proof. induction l. compute. auto. rewrite <- last_append_head.
 Qed.
  
 
+Lemma map_S_first: (forall (h:nat) (l:list nat), map (fun x : nat => S x) (h :: l)
+= (S h) :: map (fun x : nat => S x) l).
+Proof. induction l; crush.
+Qed.
+
 Lemma flatten_exp'_index: forall (e:exp) (index :nat),
 (map fst (fst (flatten_exp' (S index) e))) = (map (fun x=>S x)
 (map fst (fst (flatten_exp' index e)))).
 Proof. induction e; crush. 
+  remember (map fst (fst (flatten_exp' index e2))) as  l.
+  destruct l eqn: Q; crush.
  repeat rewrite map_app. crush.
  remember (map (fun x : nat => S x)
                     (map fst (fst (flatten_exp' index e2))))
  as temp.
+ repeat rewrite <- map_S_first. 
  rewrite next_index'_index. crush.
 Qed.
 
@@ -355,55 +373,7 @@ Qed.
 
 Lemma in_S_iff: forall a l, In a l <-> In (S a) (map (fun x=> S x) l).
 Proof. split. apply in_S. apply S_in. Qed.
-Lemma flatten_exp'_increases: 
-forall (e : exp) (a index : nat), 
-In a  (map fst (fst (flatten_exp' (S index) e))) -> index < a.
 
-Proof. induction e; crush. Focus 2.
- rewrite -> flatten_exp'_index in H0.
- destruct a. Focus 2. apply S_in in H0. rename a into a'.
- rename index into index'. apply IHe in H0. auto.
- assert (forall (l:list nat), ~ In 0 (map (fun x => S x) l)).
- induction l; crush. contradict H0. auto.
- Focus 2.
-  rewrite -> flatten_exp'_index in H0.
- destruct a. Focus 2. apply S_in in H0. rename a into a'.
- rename index into index'. apply IHe in H0. auto.
- assert (forall (l:list nat), ~ In 0 (map (fun x => S x) l)).
- induction l; crush. contradict H0. auto.
- repeat rewrite map_app in H0.
- apply in_app_or in H0. destruct H0.
- rename index into index'. apply IHe2 in H. omega.
- rewrite flatten_exp'_index in H.
- rewrite next_index'_index in H.
- rewrite flatten_exp'_index in H.
- destruct a. Focus 2. apply S_in in H.
- rewrite flatten_exp'_index in H.
- rewrite next_index'_index in H. 
- apply IHe1 in H.
- remember (map fst (fst (flatten_exp' index e2))) as l.
- rename index into i.
- rename a into h.
- assert  (forall c  : nat,
-       In c (map fst (fst (flatten_exp' i e2))) ->
-       i < S c). 
- intros. apply in_S in H0. rewrite <- flatten_exp'_index in H0. apply IHe2. auto.
-(*should be derivable from IHe2*)
- unfold next_index' in H. unfold last_index in H. rewrite <- Heql in H0.
- destruct l. omega.
- assert (In (last (n :: l) n) (n::l)). apply last_in.
-  apply H0 in H1. omega.
- assert (forall (l:list nat), ~ In 0 (map (fun x => S x) l)).
- induction l; crush. 
- assert (~ In 0 (map (fun x : nat => S x)
-         (map fst
-            (fst
-               (flatten_exp'
-                  (next_index' (S index)
-                     (map fst
-                        (fst (flatten_exp' (S index) e2))))
-                  e1))))). apply H0. congruence.
-Qed.
 
 Eval compute in (map fst (fst (flatten_exp' 0 (Binop Tt Or (Binop Tt And Ff))))).
 
@@ -467,7 +437,6 @@ Proof.
   destruct l2; auto.
   Qed.
 
-(*This sequential lemma is not true!!*)
 
 Lemma flatten_exp'_sequential : forall e index ,
   is_sequential (map fst (fst (flatten_exp' index e))).
@@ -503,53 +472,44 @@ Proof. induction e; crush.
   remember (map fst (fst (flatten_exp' (S index) e2)))  as l1.
   destruct l1 eqn:Q1. rename index into i.
   Eval compute in flatten_exp' 0 (Binop (Binop (Var (User 3)) And Tt) And (Binop (Var (User 4)) And Tt)).
-  simpl. unfold next_index'. unfold last_index.
-  destruct (map fst (fst (flatten_exp' (S (S i)) e1))) eqn:Q2.
+ 
+  destruct (map fst (fst (flatten_exp' (S i) e1))) eqn:Q2.
   auto. split. symmetry in Q2. apply first_is_index in Q2.
+ auto. rewrite <- Q2. apply IHe1.
+  repeat rewrite Heql1.
   remember (map fst
     (fst (flatten_exp' (S index) e2) ++
      fst
        (flatten_exp'
           (next_index' (S index)
-             (map fst (fst (flatten_exp' (S index) e2)))) e1))) as l.
-  destruct l eqn:Q1. auto.
-  split.
+             (map fst (fst (flatten_exp' (S index) e2)))) e1))) as m.
+  destruct m eqn:Q2. auto. 
+  
 
-  Focus 2.
-  rewrite map_app in Heql.
-  remember (map fst (fst (flatten_exp' (S index) e2)) )as l1.
-  assert (is_sequential l1). rewrite Heql1. auto.
+  
+  rewrite map_app in Heqm.
+ 
+  assert (is_sequential l1). rewrite Q1. rewrite Heql1. auto.
   assert (is_sequential (l1++[(next_index' (S index) l1)])).
-  destruct l1 eqn:Q. compute; auto.
-  apply first_is_index in Heql1. rewrite Heql1.
-  apply seq_concat_h. auto.
+  
+  apply first_is_index in Heql1. rewrite Heql1. rewrite Q1.
+  apply seq_concat_h. rewrite <- Q1. auto.
+  rewrite <- Heql1 in Heqm. rewrite <- Q1 in Heqm.
   remember (map fst
          (fst (flatten_exp' (next_index' (S index) l1) e1))) as l2.
   assert (is_sequential l2).
-  rewrite Heql2; auto. rewrite Heql.
-  destruct l2. assert (forall l1:list nat, l1++[]=l1). induction l2; crush. rewrite H2. auto.
-  apply first_is_index in Heql2. rewrite Heql2 in H0.
-  apply seq_concat; auto. 
-  rewrite map_app in Heql.
-  destruct(  map fst (fst (flatten_exp' (S index) e2))) eqn:Q2.
-  unfold next_index' in Heql. unfold last_index in Heql.
-  simpl in Heql. apply first_is_index in Heql.
-  Eval compute in flatten_exp' 0 (Var (User 3)).
-Lemma flatten_exp'_index_unique : forall e (index : nat),
-                                   index > 0 -> 
-                                   NoDup (List.map fst (fst (flatten_exp' index e))).
-Proof. Hint Constructors NoDup. induction e; crush.
-Focus 2.
-assert (NoDup (map fst (fst (flatten_exp' (S index) e)))). apply IHe. auto.
-apply NoDup_cons.
-Admitted.
+  rewrite Heql2; auto. rewrite Heqm.
+  destruct l2. assert (forall l1:list nat, l1++[]=l1). induction l2; crush. rewrite H2 in *. split.
+  apply first_is_index in Heql1. rewrite Q1 in Heqm.  inject Heqm. auto. auto. 
+  split. rewrite Q1 in Heqm. rewrite <- app_comm_cons in Heqm.
+  inject Heqm. apply first_is_index in Heql1. auto.
+  apply seq_concat; auto. apply first_is_index in Heql2. 
+  rewrite <- Heql2. auto. 
+  Qed.
+
 
 Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, var).
 
-Lemma flatten_exp'_sequential : forall e index n, index > 0 ->
-                                                 S (nth n (List.map fst (fst (flatten_exp' index e))) 0)
-                                                 = (nth (S n) (List.map fst (fst (flatten_exp' index e))) 1).
-Admitted.
 
 Definition next_index (index : nat) (l : list (prod nat flat_exp)) :=
   match l with
