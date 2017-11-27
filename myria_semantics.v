@@ -271,19 +271,21 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
   := match e with 
        | Var x => ([], x)
        | Binop e₁ op e₂ =>
-             
-             ( (index, Flat_Binop (snd (flatten_exp' (next_index' (S index) 
-                                                     (map fst (fst (flatten_exp' (S index) e₂))))
-                                                      e₁))
-                                   op
-                                  (snd (flatten_exp' (S index) e₂)))
-               ::match (map fst (fst (flatten_exp' (S index) e₂))) with
-                 | [] => (fst (flatten_exp' (S index) e₁)) 
-                 | _::_ => (fst (flatten_exp' (S index) e₂)) 
-                         ++ (fst (flatten_exp' (next_index' (S index) (map fst (fst (flatten_exp' (S index) e₂)))) e₁))
-                 end
-              ,System index)
-        
+         match (flatten_exp' (S index) e₂) with
+           | (decls_e2, ref_e2) =>
+             match ((flatten_exp' (next_index' (S index) 
+                                               (map fst decls_e2))
+                                  e₁)) with
+               | (decls_e1, ref_e1) => 
+                 ( (index, Flat_Binop ref_e1 op ref_e2)
+                     ::match (map fst decls_e2) with
+                         | [] => (fst (flatten_exp' (S index) e₁)) 
+                         | _::_ => decls_e2 
+                                     ++ (fst (flatten_exp' (next_index' (S index) (map fst decls_e2)) e₁))
+                       end
+                   ,System index)
+             end
+         end
        | Not e =>
          ((match (flatten_exp' (S index) e) with
              | (decls,ref) => (index, (Flat_Not ref))::decls
@@ -291,8 +293,10 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
        | Const x => ((index,Flat_Const x)::[],System index)
        | Tt => ((index,Flat_Tt)::[],System index)
        | Ff => ((index,Flat_Ff)::[],System index)
-       | Deref e => ( (index,(Flat_Deref (snd (flatten_exp' (S index) e))))::(fst (flatten_exp' (S index) e)),
-                    System index)
+       | Deref e =>
+         (match (flatten_exp' (S index) e) with
+           | (decls,ref) => (index,(Flat_Deref ref))::decls
+         end, System index)
      end.
 
 
