@@ -364,10 +364,12 @@ Ltac destruct_lets :=
     | [|- context [map (fun x : nat => S x) (map ?fst ?subexpr)] ] => remember_destruct' (map (fun x : nat => S x) (map fst subexpr)) 
   end; clear_context_pairs.
 
+Ltac mycrush := crush; repeat destruct_lets; crush.
+
 Lemma flatten_exp'_index: forall (e:exp) (index :nat),
 (map fst (fst (flatten_exp' (S index) e))) = (map (fun x=>S x)
 (map fst (fst (flatten_exp' index e)))).
-Proof. induction e; crush; repeat destruct_lets; crush. 
+Proof. induction e; mycrush.
   remember (map fst (fst (flatten_exp' index e2))) as  l.
   destruct l eqn: Q; crush.
  repeat rewrite map_app. crush.
@@ -413,7 +415,7 @@ Qed.
 
 Lemma first_is_index : forall e index h t,
 h::t=(map fst (fst (flatten_exp' index e))) -> index = h.
-induction e; crush.
+induction e; mycrush.
 Qed.
 
 Lemma last_default_irrelevant : forall (n a:nat)( l:list nat),
@@ -459,7 +461,7 @@ Proof.
 
 Lemma flatten_exp'_sequential : forall e index ,
   is_sequential (map fst (fst (flatten_exp' index e))).
-Proof. induction e; crush.
+Proof. induction e; mycrush.
   Focus 2. rewrite flatten_exp'_index.
   remember (map fst (fst (flatten_exp' index e))) as l.
   destruct l. simpl; auto.
