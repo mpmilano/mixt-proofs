@@ -285,9 +285,9 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
               ,System index)
         
        | Not e =>
-         (
-           (index, (Flat_Not (snd (flatten_exp' (S index) e)))):: fst (flatten_exp' (S index) e)
-         , System index)
+         ((match (flatten_exp' (S index) e) with
+             | (decls,ref) => (index, (Flat_Not ref))::decls
+           end), System index)
        | Const x => ((index,Flat_Const x)::[],System index)
        | Tt => ((index,Flat_Tt)::[],System index)
        | Ff => ((index,Flat_Ff)::[],System index)
@@ -347,10 +347,27 @@ Lemma map_S_first: (forall (h:nat) (l:list nat), map (fun x : nat => S x) (h :: 
 Proof. induction l; crush.
 Qed.
 
+Ltac remember_destruct x name := remember x as name; destruct name; subst.
+Ltac remember_destruct' x  := remember x as tmpname; destruct tmpname; subst.
+
+Lemma pairs_in_context_work: forall {A B : Type} {l : A} {r : B} {e : (prod A B)} , (l,r) = e -> l = (fst e) /\ r = (snd e). crush. Qed. 
+
+Ltac clear_context_pairs := match goal with | [H : (?l,?r) = ?e |- _] =>
+                                              assert (l = fst e) by apply (pairs_in_context_work H );
+                                                assert (r = snd e) by apply (pairs_in_context_work H );
+                                                clear H
+                            end.
+Ltac destruct_lets :=
+  match goal with
+    | [|- context [let (_,_) := ?expr in _] ] =>  remember_destruct' expr
+    | [ H : context [let (_,_) := ?expr in _] |- _ ] =>  remember_destruct' expr
+    | [|- context [map (fun x : nat => S x) (map ?fst ?subexpr)] ] => remember_destruct' (map (fun x : nat => S x) (map fst subexpr)) 
+  end; clear_context_pairs.
+
 Lemma flatten_exp'_index: forall (e:exp) (index :nat),
 (map fst (fst (flatten_exp' (S index) e))) = (map (fun x=>S x)
 (map fst (fst (flatten_exp' index e)))).
-Proof. induction e; crush. 
+Proof. induction e; crush; repeat destruct_lets; crush. 
   remember (map fst (fst (flatten_exp' index e2))) as  l.
   destruct l eqn: Q; crush.
  repeat rewrite map_app. crush.
@@ -359,7 +376,9 @@ Proof. induction e; crush.
  as temp.
  repeat rewrite <- map_S_first. 
  rewrite next_index'_index. crush.
+
 Qed.
+
 
 Require Import Omega.
 Lemma S_in: forall a l,  In (S a) (map (fun x=> S x) l)-> In a l.
