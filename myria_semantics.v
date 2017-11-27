@@ -271,21 +271,13 @@ Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) 
   := match e with 
        | Var x => ([], x)
        | Binop e₁ op e₂ =>
-         match (flatten_exp' (S index) e₂) with
-           | (decls_e2, ref_e2) =>
-             match ((flatten_exp' (next_index' (S index) 
-                                               (map fst decls_e2))
-                                  e₁)) with
-               | (decls_e1, ref_e1) => 
-                 ( (index, Flat_Binop ref_e1 op ref_e2)
-                     ::match (map fst decls_e2) with
-                         | [] => (fst (flatten_exp' (S index) e₁)) 
-                         | _::_ => decls_e2 
-                                     ++ (fst (flatten_exp' (next_index' (S index) (map fst decls_e2)) e₁))
-                       end
-                   ,System index)
-             end
-         end
+         let (decls_e2, ref_e2) := (flatten_exp' (S index) e₂) in
+         let (decls_e1, ref_e1) := ((flatten_exp' (next_index' (S index) (map fst decls_e2)) e₁)) in
+         let binop_decl := (index, Flat_Binop ref_e1 op ref_e2) in
+         ( binop_decl :: match decls_e2 with
+           | [] => let (lst,_) := (flatten_exp' (S index) e₁) in lst
+           | _::_ => decls_e2 ++ decls_e1
+         end, System index)
        | Not e =>
          ((match (flatten_exp' (S index) e) with
              | (decls,ref) => (index, (Flat_Not ref))::decls
@@ -361,26 +353,30 @@ Ltac clear_context_pairs := match goal with | [H : (?l,?r) = ?e |- _] =>
                                                 assert (r = snd e) by apply (pairs_in_context_work H );
                                                 clear H
                             end.
-Ltac destruct_lets :=
+Ltac destruct_things :=
   match goal with
     | [|- context [let (_,_) := ?expr in _] ] =>  remember_destruct' expr
     | [ H : context [let (_,_) := ?expr in _] |- _ ] =>  remember_destruct' expr
     | [|- context [map (fun x : nat => S x) (map ?fst ?subexpr)] ] => remember_destruct' (map (fun x : nat => S x) (map fst subexpr)) 
   end; clear_context_pairs.
 
-Ltac mycrush := crush; repeat destruct_lets; crush.
+Ltac mycrush := crush; repeat destruct_things; crush.
 
 Lemma flatten_exp'_index: forall (e:exp) (index :nat),
 (map fst (fst (flatten_exp' (S index) e))) = (map (fun x=>S x)
 (map fst (fst (flatten_exp' index e)))).
 Proof. induction e; mycrush.
-  remember (map fst (fst (flatten_exp' index e2))) as  l.
-  destruct l eqn: Q; crush.
+       Ltac tmp_ltac n1 := 
+         match goal with | [ |- context [match ?expr with | [] => _ | _::_ => _ end ]] => remember_destruct expr n1 end.
+       tmp_ltac n1. tmp_ltac n2. 
+  remember (map fst (fst (flatten_exp' index e2))) as  l. 
+  destruct l eqn: Q; crush. 
  repeat rewrite map_app. crush.
  remember (map (fun x : nat => S x)
                     (map fst (fst (flatten_exp' index e2))))
  as temp.
- repeat rewrite <- map_S_first. 
+ repeat rewrite <- map_S_first.
+ repeat match goal with | [ |- context [match ?expr with | [] => _ | _::_ => _ end ]] => remember_destruct' expr end.
  rewrite next_index'_index. crush.
 
 Qed.
