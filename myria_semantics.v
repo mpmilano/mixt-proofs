@@ -343,11 +343,15 @@ Lemma map_S_first: (forall (h:nat) (l:list nat), map (fun x : nat => S x) (h :: 
 Proof. induction l; crush.
 Qed.
 
-Ltac remember_destruct x name := remember x as name; destruct name; subst.
+Ltac remember_destruct x name eqname := remember x as name eqn:eqname; destruct name; subst.
 Ltac remember_destruct' x  := remember x as tmpname; destruct tmpname; subst.
 
 Ltac remember_destruct'' x  := remember x;
     match goal with [H : ?name = x |- _] => destruct name; subst
+    end.
+
+Ltac remember_induct x  := remember x;
+    match goal with [H : ?name = x |- _] => induction name; subst; crush
     end.
 
 Lemma pairs_in_context_work: forall {A B : Type} {l : A} {r : B} {e : (prod A B)} , (l,r) = e -> l = (fst e) /\ r = (snd e). crush. Qed. 
@@ -453,6 +457,11 @@ h::t=(map fst (fst (flatten_exp' index e))) -> index = h.
 induction e; mycrush.
 Qed.
 
+Lemma first_is_index' : forall e index h t,
+h::t=(fst (flatten_exp' index e)) -> index = fst h.
+induction e; mycrush.
+Qed.
+
 Lemma last_default_irrelevant : forall (n a:nat)( l:list nat),
   last (n::l) a = last (n::l) n.
 Proof. induction l; crush. destruct l; auto.
@@ -493,37 +502,41 @@ Proof.
   destruct l2; auto.
   Qed.
 
+Ltac use_flatten_exp'_index := match goal with
+  | [ |- context [map fst (fst (flatten_exp' (S ?index) ?e))]] => repeat rewrite flatten_exp'_index; crush
+  | [ H : context [map fst (fst (flatten_exp' (S ?index) ?e))] |- _ ] => repeat rewrite flatten_exp'_index in H; crush
+end.
+
+Lemma sequential_cons : forall a l1, (is_sequential (a::l1)) -> (is_sequential l1). induction l1; crush. Qed.
 
 Lemma flatten_exp'_sequential : forall e index ,
   is_sequential (map fst (fst (flatten_exp' index e))).
-Proof. induction e; mycrush.
-  Focus 2. rewrite flatten_exp'_index.
-  remember (map fst (fst (flatten_exp' index e))) as l.
-  destruct l. simpl; auto.
-  rename index into i.
-  assert (is_sequential ( map fst (fst (flatten_exp' i e)))).
-  apply IHe.
-  rewrite <- Heql in H.  
- assert (forall (h:nat) (l:list nat), map (fun x : nat => S x) (h :: l)
-= (S h) :: map (fun x : nat => S x) l).
-  induction l; crush.
-  rewrite H0. split.
-  assert (n=i). apply first_is_index in Heql. auto. auto.
-  rewrite <- H0. apply S_is_sequential. auto.
-    Focus 2. rewrite flatten_exp'_index.
-  remember (map fst (fst (flatten_exp' index e))) as l.
-  destruct l. simpl; auto.
-  rename index into i.
-  assert (is_sequential ( map fst (fst (flatten_exp' i e)))).
-  apply IHe.
-  rewrite <- Heql in H.  
- assert (forall (h:nat) (l:list nat), map (fun x : nat => S x) (h :: l)
-= (S h) :: map (fun x : nat => S x) l).
-  induction l; crush.
-  rewrite H0. split.
-  assert (n=i). apply first_is_index in Heql. auto. auto.
-  rewrite <- H0. apply S_is_sequential. auto.
-  (*hard case*)
+Proof.
+  Ltac simple_subcase l Heql := match goal with | [|- match ?expr with | [] => True | _::_ => _ end] =>
+                             assert (is_sequential expr) by crush;
+                               remember_destruct expr l Heql; crush; apply first_is_index in Heql; crush;
+                               tauto
+           end. 
+  induction e; mycrush;
+       try simple_subcase l Heql.
+       - assert (is_sequential (map fst (fst (flatten_exp' (S index) e2)))) by crush.
+         remember_destruct (fst (flatten_exp' (S index) e2)) e2l Heqe2l.
+         * simple_subcase l Heql.
+         * repeat rewrite map_app. repeat rewrite map_cons. rewrite <- app_comm_cons.
+           assert (fst p = (S index)) by (symmetry; apply first_is_index' with e2 e2l; tauto).
+           split; try tauto.
+           crush. assert (is_sequential (map fst (p::e2l))) by (rewrite Heqe2l; apply IHe2).
+           assert (is_sequential (map fst e2l)) by (rewrite map_cons in H1; apply sequential_cons in H1; tauto).
+           assert (is_sequential (map fst
+                                      (fst (flatten_exp' (next_index' (S index) (S index :: map fst e2l)) e1)))) by crush.
+           match goal with | [|- match ?e with | [] => True | _::_ => _ end ]=> remember_destruct e complex Heqcomplex end.
+           (crush; tauto).
+           split. 
+           
+           (*hard case*)
+
+
+           
   repeat rewrite map_app.
   remember (map fst (fst (flatten_exp' (S index) e2)))  as l1.
   destruct l1 eqn:Q1. rename index into i.
