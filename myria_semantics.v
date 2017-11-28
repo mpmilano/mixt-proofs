@@ -529,7 +529,11 @@ Proof.
          * empty_flatten.
          * repeat rewrite map_app. repeat rewrite map_cons. rewrite <- app_comm_cons.
            assert (fst p = (S index)) by (symmetry; apply first_is_index' with e2 e2l; tauto).
-           split; try tauto. replace (fst p) with (S index) by crush. rewrite flatten_exp'_index. 
+           split; try tauto. replace (fst p) with (S index) by crush. 
+
+
+
+           rewrite flatten_exp'_index. 
            crush. assert (is_sequential (map fst (p::e2l))) by (rewrite Heqe2l; apply IHe2).
            assert (is_sequential (map fst e2l)) by (rewrite map_cons in H1; apply sequential_cons in H1; tauto).
            assert (is_sequential (map fst
