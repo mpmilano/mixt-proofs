@@ -346,6 +346,10 @@ Qed.
 Ltac remember_destruct x name := remember x as name; destruct name; subst.
 Ltac remember_destruct' x  := remember x as tmpname; destruct tmpname; subst.
 
+Ltac remember_destruct'' x  := remember x;
+    match goal with [H : ?name = x |- _] => destruct name; subst
+    end.
+
 Lemma pairs_in_context_work: forall {A B : Type} {l : A} {r : B} {e : (prod A B)} , (l,r) = e -> l = (fst e) /\ r = (snd e). crush. Qed. 
 
 Ltac clear_context_pairs := match goal with | [H : (?l,?r) = ?e |- _] =>
@@ -362,23 +366,54 @@ Ltac destruct_things :=
 
 Ltac mycrush := crush; repeat destruct_things; crush.
 
+Ltac first_equal :=
+  match goal with | [|- ?fst :: ?expr1 = ?fst :: ?expr2] =>
+                    assert (expr1 = expr2 -> fst::expr1 = fst::expr2) as Hfst_equal by crush;
+                      apply Hfst_equal; crush; clear Hfst_equal
+               | [|- ?fst ++ ?expr1 = ?fst ++ ?expr2] =>
+                 assert (expr1 = expr2 -> fst++expr1 = fst++expr2) as Hfst_equal by crush;
+                   apply Hfst_equal; crush; clear Hfst_equal
+  end.
+
+
+
+Lemma map_deterministic : forall {A B : Type} (f : A->B) (l1 l2 : list A), l1 = l2 -> map f l1 = map f l2.
+  crush.
+Qed.
+
+Lemma flatten_exp'_index_irrelevant_when_empty :
+  forall (e : exp) (n1 n2 : nat), [] = fst (flatten_exp' n1 e) -> [] = fst (flatten_exp' n2 e).
+  induction e; mycrush.
+Qed.
+
+Ltac empty_contradiction :=
+  match goal with
+    | [H : [] = fst (flatten_exp' ?index1 ?e), H2: _::_ = fst (flatten_exp' ?index2 ?e) |- _ ] =>
+      assert ([] = fst (flatten_exp' index2 e)) as contradictH by (apply (flatten_exp'_index_irrelevant_when_empty e index1 index2); crush); crush; clear contradictH
+  end.
+
+Ltac clear_binop_match' := 
+  match goal with | [ |- context [match ?expr with | [] => _ | _::_ => _ end ]]
+                    => remember_destruct'' expr
+  end.
+
+Ltac clear_binop_match :=
+  clear_binop_match'; clear_binop_match';
+  try (crush; empty_contradiction; tauto);
+  match goal with
+    | [H1 : ?p1 :: ?l1 = fst (flatten_exp' ?index ?e1),
+            H2 : ?p2 :: ?l2 = fst (flatten_exp' ?index2 ?e2) |- _] =>
+      replace (p1::l1) with (fst (flatten_exp' index e1)) by crush;
+        replace (p2::l2) with (fst (flatten_exp' index2 e2)) by crush
+  end.
+
 Lemma flatten_exp'_index: forall (e:exp) (index :nat),
 (map fst (fst (flatten_exp' (S index) e))) = (map (fun x=>S x)
 (map fst (fst (flatten_exp' index e)))).
-Proof. induction e; mycrush.
-       Ltac tmp_ltac n1 := 
-         match goal with | [ |- context [match ?expr with | [] => _ | _::_ => _ end ]] => remember_destruct expr n1 end.
-       tmp_ltac n1. tmp_ltac n2. 
-  remember (map fst (fst (flatten_exp' index e2))) as  l. 
-  destruct l eqn: Q; crush. 
- repeat rewrite map_app. crush.
- remember (map (fun x : nat => S x)
-                    (map fst (fst (flatten_exp' index e2))))
- as temp.
- repeat rewrite <- map_S_first.
- repeat match goal with | [ |- context [match ?expr with | [] => _ | _::_ => _ end ]] => remember_destruct' expr end.
- rewrite next_index'_index. crush.
-
+Proof. induction e; mycrush. 
+       first_equal. clear_binop_match. 
+         repeat rewrite map_app. repeat rewrite IHe2. first_equal. repeat rewrite next_index'_index.
+         crush. 
 Qed.
 
 
