@@ -269,15 +269,12 @@ Definition next_index' index l := S (last_index index l).
 (* Order: list hd is last declaration, list tail is first.  2nd elem of outer pair is a varref.*)
 Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) var
   := match e with 
-       | Var x => ([], x)
+       | Var x => ((index,Flat_Var x)::[],System index)
        | Binop e₁ op e₂ =>
          let (decls_e2, ref_e2) := (flatten_exp' (S index) e₂) in
          let (decls_e1, ref_e1) := ((flatten_exp' (next_index' (S index) (map fst decls_e2)) e₁)) in
          let binop_decl := (index, Flat_Binop ref_e1 op ref_e2) in
-         ( binop_decl :: match decls_e2 with
-           | [] => let (lst,_) := (flatten_exp' (S index) e₁) in lst
-           | _::_ => decls_e2 ++ decls_e1
-         end, System index)
+         ( binop_decl :: decls_e2 ++ decls_e1, System index)
        | Not e =>
          ((match (flatten_exp' (S index) e) with
              | (decls,ref) => (index, (Flat_Not ref))::decls
@@ -415,7 +412,7 @@ Lemma flatten_exp'_index: forall (e:exp) (index :nat),
 (map fst (fst (flatten_exp' (S index) e))) = (map (fun x=>S x)
 (map fst (fst (flatten_exp' index e)))).
 Proof. induction e; mycrush. 
-       first_equal. clear_binop_match. 
+       first_equal. 
          repeat rewrite map_app. repeat rewrite IHe2. first_equal. repeat rewrite next_index'_index.
          crush. 
 Qed.
@@ -509,6 +506,14 @@ end.
 
 Lemma sequential_cons : forall a l1, (is_sequential (a::l1)) -> (is_sequential l1). induction l1; crush. Qed.
 
+Lemma flatten_exp'_never_empty: forall n e, [] = fst (flatten_exp' n e) -> False.
+  induction e; mycrush.
+Qed.
+
+Ltac empty_flatten := match goal with | [H : [] = fst (flatten_exp' ?n ?e) |- _] =>
+                                        apply flatten_exp'_never_empty in H; crush; tauto
+                      end.
+
 Lemma flatten_exp'_sequential : forall e index ,
   is_sequential (map fst (fst (flatten_exp' index e))).
 Proof.
@@ -520,11 +525,11 @@ Proof.
   induction e; mycrush;
        try simple_subcase l Heql.
        - assert (is_sequential (map fst (fst (flatten_exp' (S index) e2)))) by crush.
-         remember_destruct (fst (flatten_exp' (S index) e2)) e2l Heqe2l.
-         * simple_subcase l Heql.
+         remember_destruct (fst (flatten_exp' (S index) e2)) e2l Heqe2l. crush.
+         * empty_flatten.
          * repeat rewrite map_app. repeat rewrite map_cons. rewrite <- app_comm_cons.
            assert (fst p = (S index)) by (symmetry; apply first_is_index' with e2 e2l; tauto).
-           split; try tauto.
+           split; try tauto. replace (fst p) with (S index) by crush. rewrite flatten_exp'_index. 
            crush. assert (is_sequential (map fst (p::e2l))) by (rewrite Heqe2l; apply IHe2).
            assert (is_sequential (map fst e2l)) by (rewrite map_cons in H1; apply sequential_cons in H1; tauto).
            assert (is_sequential (map fst
