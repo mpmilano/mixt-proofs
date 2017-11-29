@@ -529,7 +529,7 @@ Proof.
            replace (S index :: map fst e2l ++ next_index' (S index) (S index :: map fst e2l) :: big_sequential)
                    with ((S index :: map fst e2l) ++ next_index' (S index) (S index :: map fst e2l) :: big_sequential) by crush. 
            apply (seq_concat _ _ _ H2 H1 ).
-Qed.      
+Qed.
 
 Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, var).
 
@@ -545,15 +545,6 @@ Fixpoint declare_everything (l : (list (prod nat flat_exp))) (c : flat_com)  : f
     | ((var,exp)::rest) => Flat_Declaration (System var) exp (declare_everything rest c)
     | [] => c
   end.
-
-Definition max_nat a b c :=
-  if Nat.ltb a b
-  then if Nat.ltb b c then c else b
-  else if Nat.ltb a c then c else a.
-
-Lemma max_nat_correct : forall (a b c : nat), (Nat.ltb a b) = Nat.ltb a (max_nat a b c).
-  
-  Admitted.
                                     
 
 Definition next_var2 (a b : var) (index : nat) :=
