@@ -382,17 +382,6 @@ Lemma map_deterministic : forall {A B : Type} (f : A->B) (l1 l2 : list A), l1 = 
   crush.
 Qed.
 
-Lemma flatten_exp'_index_irrelevant_when_empty :
-  forall (e : exp) (n1 n2 : nat), [] = fst (flatten_exp' n1 e) -> [] = fst (flatten_exp' n2 e).
-  induction e; mycrush.
-Qed.
-
-Ltac empty_contradiction :=
-  match goal with
-    | [H : [] = fst (flatten_exp' ?index1 ?e), H2: _::_ = fst (flatten_exp' ?index2 ?e) |- _ ] =>
-      assert ([] = fst (flatten_exp' index2 e)) as contradictH by (apply (flatten_exp'_index_irrelevant_when_empty e index1 index2); crush); crush; clear contradictH
-  end.
-
 
 Lemma flatten_exp'_index: forall (e:exp) (index :nat),
 (map fst (fst (flatten_exp' (S index) e))) = (map (fun x=>S x)
@@ -449,6 +438,13 @@ Lemma last_default_irrelevant : forall (n a:nat)( l:list nat),
   last (n::l) a = last (n::l) n.
 Proof. induction l; crush. destruct l; auto.
 Qed.
+
+Lemma last_default_irrelevant' : forall (b n a:nat)( l:list nat),
+  last (n::l) a = last (n::l) b.
+Proof. induction l; crush. destruct l; auto.
+Qed.
+
+
 Lemma seq_concat_h: forall l1 n1 n2,
   is_sequential (n1::l1) 
    -> is_sequential ((n1::l1)++[next_index' n2 (n1::l1) ]).
@@ -463,16 +459,22 @@ Proof.
   Ltac reassociate_list_in := match goal with
                              | [ H: context [(?n::?a) ++ ?e] |- _] => replace ((n::a) ++ e) with (n :: (a ++ e)) in H by (crush; tauto)
                              | [ H: context [?n::?a ++ ?e] |- _ ] => replace (n::a ++ e) with ((n :: a) ++ e) in H by (crush; tauto)
-                           end.
+                              end.
+  Ltac next_index_machinery := match goal with
+                                 | [H : context [next_index' _ _ ] |- _] => unfold next_index' in H
+                                 | [|- context [next_index' _ _ ] ] => unfold next_index' 
+                                 | [|- context [(last_index _ _)] ] => unfold last_index
+                                 | [H : context [last_index _ _ ] |- _ ] => unfold last_index in H
+                                 | [|- context [last (?a::?b::?tl)]] => repeat rewrite last_drop_head
+                                 | [H : context [last (?a::?b::?tl)] |- _] => repeat rewrite last_drop_head in H
+                               end.
   reassociate_list.
-  - split.
-    * tauto.
-    * unfold next_index'. unfold last_index. repeat rewrite last_drop_head.
-      unfold next_index' in IHa. unfold last_index in IHa.
-      
-      assert (is_sequential ((n :: a) ++ [S (last (S n1 :: n :: a) (S n1))])). apply IHa in H1.
-      reassociate_list_in. crush. crush. reassociate_list_in. rewrite last_drop_head in H.
-      rewrite last_default_irrelevant. rewrite last_default_irrelevant in H. crush. 
+  split.
+  * tauto.
+  * repeat next_index_machinery.
+    specialize (IHa (S n1) n1 H1). reassociate_list_in. 
+    rewrite (last_default_irrelevant' n). rewrite (last_default_irrelevant' n) in IHa. 
+    crush. 
  Qed.
 
 Lemma seq_concat : forall (a:nat)(l1 l2: list nat),
@@ -499,9 +501,28 @@ Lemma flatten_exp'_never_empty: forall n e, [] = fst (flatten_exp' n e) -> False
   induction e; mycrush.
 Qed.
 
-Ltac empty_flatten := match goal with | [H : [] = fst (flatten_exp' ?n ?e) |- _] =>
-                                        apply flatten_exp'_never_empty in H; crush; tauto
-                      end.
+Lemma flatten_exp'_never_empty': forall n e, [] = map fst (fst (flatten_exp' n e)) -> False.
+  induction e; mycrush.
+Qed.
+
+Ltac empty_flatten := match goal with
+                        | [H : [] = fst (flatten_exp' ?n ?e) |- _] =>
+                          apply flatten_exp'_never_empty in H
+                        | [H : [] = map fst (fst (flatten_exp' ?n ?e)) |- _] =>
+                          apply flatten_exp'_never_empty' in H
+                      end; crush; tauto .
+
+Ltac normalize_map := repeat rewrite map_app; repeat rewrite map_cons.
+
+Ltac first_index Hnew Hevidence := match goal with
+                      | [H : ?p :: ?l = fst (flatten_exp' ?n ?e2) |- _] =>
+                        assert (fst p = n) as Hnew by (symmetry; apply (first_is_index' _ _ _ _ Hevidence); tauto )
+                      | [H : ?p :: ?l = map fst (fst (flatten_exp' ?n ?e2)) |- _] =>
+                        assert (p = n) as Hnew by (symmetry; apply (first_is_index _ _ _ _ Hevidence); tauto )
+                         end.
+
+
+Ltac app_nil := match goal with | [|- context [?e ++ []] ] => replace (e ++ []) with e by crush end. 
 
 Lemma flatten_exp'_sequential : forall e index ,
   is_sequential (map fst (fst (flatten_exp' index e))).
@@ -512,24 +533,23 @@ Proof.
                                tauto
            end. 
   induction e; mycrush;
-       try simple_subcase l Heql.
-       - assert (is_sequential (map fst (fst (flatten_exp' (S index) e2)))) by crush.
-         remember_destruct (fst (flatten_exp' (S index) e2)) e2l Heqe2l. crush.
-         * empty_flatten.
-         * repeat rewrite map_app. repeat rewrite map_cons. rewrite <- app_comm_cons.
-           assert (fst p = (S index)) by (symmetry; apply first_is_index' with e2 e2l; tauto).
-           split; try tauto. replace (fst p) with (S index) by crush.
-           remember (map fst(fst(flatten_exp' (next_index' (S index) (S index :: map fst e2l)) e1))) as big_sequential. 
-           assert (is_sequential big_sequential) by (rewrite Heqbig_sequential; crush).
-           destruct big_sequential. replace (map fst e2l ++ []) with (map fst e2l) by crush.
-           replace (S index :: map fst e2l) with (map fst (p :: e2l)) by crush.  tauto.
-           assert (next_index' (S index) (S index :: map fst e2l) = n) by (apply first_is_index in Heqbig_sequential; tauto).
-           subst. 
-           assert (is_sequential ((S index :: map fst e2l) ++ [next_index' (S index) (S index :: map fst e2l)])) by 
-               (apply seq_concat_h; rewrite map_cons in H; rewrite <- H0; assumption).
-           replace (S index :: map fst e2l ++ next_index' (S index) (S index :: map fst e2l) :: big_sequential)
-                   with ((S index :: map fst e2l) ++ next_index' (S index) (S index :: map fst e2l) :: big_sequential) by crush. 
-           apply (seq_concat _ _ _ H2 H1 ).
+  try simple_subcase l Heql.
+  - assert (is_sequential (map fst (fst (flatten_exp' (S index) e2)))) by crush.
+    remember_destruct (fst (flatten_exp' (S index) e2)) e2l Heqe2l. crush.
+    * empty_flatten.
+    * normalize_map. rewrite <- app_comm_cons. first_index H0 Heqe2l. rewrite H0. 
+      split; try tauto.
+      match goal with | [|- is_sequential (?e :: ?a ++ ?b) ] => remember b as big_sequential end.
+      assert (is_sequential big_sequential) by (rewrite Heqbig_sequential; crush).
+      destruct big_sequential; try (empty_flatten; tauto).
+      replace (S index :: map fst e2l) with (map fst (p :: e2l)) by crush.
+      first_index H2 Heqbig_sequential. 
+      subst. 
+      assert (is_sequential ((S index :: map fst e2l) ++ [next_index' (S index) (S index :: map fst e2l)])) by 
+          (apply seq_concat_h; rewrite map_cons in H; rewrite <- H0; assumption).
+      replace (S index :: map fst e2l ++ next_index' (S index) (S index :: map fst e2l) :: big_sequential)
+      with ((S index :: map fst e2l) ++ next_index' (S index) (S index :: map fst e2l) :: big_sequential) by crush. 
+      apply (seq_concat _ _ _ H2 H1 ).
 Qed.
 
 Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, var).
