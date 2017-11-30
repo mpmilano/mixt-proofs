@@ -469,6 +469,7 @@ Proof.
     * tauto.
     * unfold next_index'. unfold last_index. repeat rewrite last_drop_head.
       unfold next_index' in IHa. unfold last_index in IHa.
+      
       assert (is_sequential ((n :: a) ++ [S (last (S n1 :: n :: a) (S n1))])). apply IHa in H1.
       reassociate_list_in. crush. crush. reassociate_list_in. rewrite last_drop_head in H.
       rewrite last_default_irrelevant. rewrite last_default_irrelevant in H. crush. 
@@ -533,6 +534,11 @@ Qed.
 
 Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, var).
 
+Definition stupid := (0,Flat_Var (System 0)).
+
+Lemma flatten_exp_returns_right_nat : forall e index, (snd (flatten_exp' index e)) = (System (fst (last (fst (flatten_exp' index e)) stupid ))).
+  induction e; try (mycrush; tauto). intros. Admitted.
+
 
 Definition next_index (index : nat) (l : list (prod nat flat_exp)) :=
   match l with
@@ -540,85 +546,61 @@ Definition next_index (index : nat) (l : list (prod nat flat_exp)) :=
     | _ => S index
   end.
 
-Fixpoint declare_everything (l : (list (prod nat flat_exp))) (c : flat_com)  : flat_com :=
+
+(* To change:   have it return the next System variable available too *)
+Fixpoint declare_everything (index : nat) (l : (list (prod nat flat_exp))) (c : flat_com)  : (prod nat flat_com) :=
+  ((next_index index l),
   match l return flat_com with
-    | ((var,exp)::rest) => Flat_Declaration (System var) exp (declare_everything rest c)
+    | ((var,exp)::rest) => Flat_Declaration (System var) exp (snd (declare_everything index rest c))
     | [] => c
+  end).
+
+
+Definition index_from_var (v : var) : nat :=
+  match v with
+    | System n => n
+    | User n => n
   end.
-                                    
-
-Definition next_var2 (a b : var) (index : nat) :=
-  match (a,b) with
-    | (System a, User _) => S a
-    | (System a, System b) => if Nat.ltb a b then S b else S a
-    | (User _, System a) => S a
-    | (User _, User _) => index
-  end.
-
-
-Definition next_var3 (a b c: var) (index : nat) :=
-  next_var2 (System (next_var2 a b index)) c index.
-
-Definition next_var a index := match a with | System a => S a | User _ => index end.
-
-Fixpoint next_var_exp (index : nat)  (e : flat_exp) :=
-  match e with
-    | Flat_Const _ => S index
-    | Flat_Var a => next_var a index
-    | Flat_Binop a op b => next_var2 a b index
-    | Flat_Tt => S index
-    | Flat_Ff => S index
-    | Flat_Not a => next_var a index
-    | Flat_Deref a => next_var a index
-  end.
-
-Fixpoint next_var_cmd (index : nat)  (c : flat_com) := 
-  match c return nat -> nat with
-    | Flat_Return x => next_var x
-    | Flat_Assign_var x y => next_var2 x y 
-    | Flat_Assign_ptr x y => next_var2 x y 
-    | Flat_Declaration x e s => next_var3 x (System (next_var_exp index e)) (System (next_var_cmd index s))
-    | Flat_If x e s => next_var3 x (System (next_var_cmd index e)) (System (next_var_cmd index s))
-    | Flat_While c t => next_var2 c (System (next_var_cmd index t)) 
-    | Flat_Seq s₁ s₂ => next_var2 (System (next_var_cmd index s₁)) (System (next_var_cmd index s₂))
-    | Flat_Skip => (fun y => y)
-  end index.
-
   
-Fixpoint flatten (index : nat) (c : com) : flat_com :=
+Fixpoint flatten' (index : nat) (c : com) : (prod nat flat_com) :=
   match c with
     | Return e => let (lst,ref) := flatten_exp index e in
-                  declare_everything lst (Flat_Return ref)
+                  declare_everything (index_from_var ref) lst (Flat_Return ref)
     | Assign_var y e => let (lst,ref) := flatten_exp index e in
-                        declare_everything lst (Flat_Assign_var y ref)
+                        declare_everything (index_from_var ref) lst (Flat_Assign_var y ref)
     | Assign_ptr y e => let (lst,ref) := flatten_exp index e in
                         let index' := match ref with | System x => S x | User _ => index end in
                         let (lst2,ref2) := flatten_exp index' y in
-                        declare_everything lst (declare_everything lst2 (Flat_Assign_ptr ref2 ref))
+                        declare_everything (index_from_var ref2) lst
+                                           (snd (declare_everything (index_from_var ref) lst2 (Flat_Assign_ptr ref2 ref)))
     | Declaration x e s => let (lst,ref) := flatten_exp index e in
                            let next_ind := next_index index lst in
-                           declare_everything lst (Flat_Declaration x (Flat_Var ref) (flatten next_ind s) )
+                           let (_,body) := (flatten' next_ind s) in
+                           declare_everything (index_from_var ref) lst (Flat_Declaration x (Flat_Var ref) body )
     | If c t e => let (lst,ref) := flatten_exp index c in
                   let next_ind := next_index index lst in
-                  let flat_t := (flatten next_ind t) in
-                  declare_everything lst (Flat_If ref flat_t (flatten (next_var_cmd next_ind flat_t) e) )
+                  let (next_index, flat_t) := (flatten' next_ind t) in
+                  let (_, body) := (flatten' next_index e) in
+                  declare_everything (index_from_var ref) lst (Flat_If ref flat_t body )
     | While c t => let (lst,ref) := flatten_exp index c in
                    let next_ind := next_index index lst in
-                   declare_everything lst (Flat_While ref (flatten next_ind t) )
+                   let (_, body) := flatten' next_ind t in
+                   declare_everything (index_from_var ref) lst (Flat_While ref body )
     | Seq s₁ s₂ =>
-      let fst_stmt := (flatten index s₁) in 
-      Flat_Seq fst_stmt (flatten (next_var_cmd index fst_stmt) s₂)
-    | Skip => Flat_Skip
+      let (next_index,fst_stmt) := (flatten' index s₁) in
+      let (ret_index,snd_stmt) := (flatten' next_index s₂) in
+      (ret_index, Flat_Seq fst_stmt snd_stmt)
+    | Skip => (index, Flat_Skip)
   end.
 
-Variable unique_decl_com : com -> Prop.
-Variable max_declaration_com : com -> nat.
-Variable unique_decl_flat : flat_com -> Prop.
+Definition flatten (c : com) : flat_com := snd (flatten' 0 c).
 
-Lemma flatten_unique : forall (index : nat) (c : com), ((max_declaration_com c) < 40) -> (index > 40) -> (unique_decl_com c) -> (unique_decl_flat (flatten index c)).
+Definition unique_decl_com : com -> Prop. Admitted. 
+Definition unique_decl_flat : flat_com -> Prop. Admitted.
+Definition user_var_only : com -> Prop. Admitted.
+
+Lemma flatten_unique : forall (c : com), (unique_decl_com c) -> (user_var_only c) -> unique_decl_flat (flatten c).
 Admitted.
-
-Eval compute in (flatten_exp 1 (Binop ((Binop (Const 7) Plus (Const 15) )) Plus ((Binop (Const 7) Plus (Const 15) )) )).
 
 
 Fixpoint eval_flat_exp (e:flat_exp) (s:state) : answer := 
@@ -711,3 +693,26 @@ Fixpoint step_com_flat (cmd : flat_com) (s : state) : option (flat_com * state *
                                 | _ => None
                        end
   end.
+
+
+Fixpoint sn_flat_steps n c s :=
+  match n with
+    | S n' =>
+      match (step_com_flat c s) with
+        | Some (next_c,next_s,_) => sn_flat_steps n' next_c next_s
+        | None => None
+      end
+    | _ => step_com_flat c s
+  end.
+
+Theorem flatten_correct : forall c s, 
+                            match (step_com_fn c s) with
+                              | None => True
+                              | Some (cmd,s,val) =>
+                                exists n,
+                                match (sn_flat_steps n (flatten c) s) with
+                                  | Some (cmd2,s2,val2) =>
+                                    s = s2 /\ val = val2 /\ ((flatten cmd) = cmd2)
+                                  | None => False
+                                end
+                            end.
