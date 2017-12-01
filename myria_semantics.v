@@ -547,9 +547,7 @@ Proof.
       subst. 
       assert (is_sequential ((S index :: map fst e2l) ++ [next_index' (S index) (S index :: map fst e2l)])) by 
           (apply seq_concat_h; rewrite map_cons in H; rewrite <- H0; assumption).
-      replace (S index :: map fst e2l ++ next_index' (S index) (S index :: map fst e2l) :: big_sequential)
-      with ((S index :: map fst e2l) ++ next_index' (S index) (S index :: map fst e2l) :: big_sequential) by crush. 
-      apply (seq_concat _ _ _ H2 H1 ).
+      specialize (seq_concat _ _ _ H2 H1). crush. 
 Qed.
 
 Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, var).
