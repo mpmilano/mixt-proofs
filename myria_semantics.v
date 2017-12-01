@@ -613,11 +613,35 @@ Fixpoint flatten' (index : nat) (c : com) : (prod nat flat_com) :=
 
 Definition flatten (c : com) : flat_com := snd (flatten' 0 c).
 
-Definition unique_decl_com : com -> Prop. Admitted. 
-Definition unique_decl_flat : flat_com -> Prop. Admitted.
-Definition user_var_only : com -> Prop. Admitted.
+Fixpoint collect_declared_vars_com (c:com) : list var :=
+  match c with
+    | Declaration x e rest => x::collect_declared_vars_com rest
+    | _ => []
+  end.
+
+Fixpoint collect_declared_vars_flatcom (c:flat_com) : list var :=
+  match c with
+    | Flat_Declaration x e rest => x::collect_declared_vars_flatcom rest
+    | _ => []
+  end.
+
+
+Definition unique_decl_com (c:com): Prop :=
+  NoDup (collect_declared_vars_com c).
+Definition unique_decl_flat (c:flat_com): Prop :=
+  NoDup (collect_declared_vars_flatcom c).
+Fixpoint user_var_only (c:com): Prop :=
+  match c with
+    | Declaration x e rest =>
+        match x with
+          | User _ => user_var_only rest
+          | System _ => False
+        end
+    | _ => True
+  end.
 
 Lemma flatten_unique : forall (c : com), (unique_decl_com c) -> (user_var_only c) -> unique_decl_flat (flatten c).
+
 Admitted.
 
 
