@@ -678,6 +678,32 @@ Fixpoint user_var_only (c:com): Prop :=
     | _ => True
   end.
 
+Lemma declare_everything_is_union:
+forall (x index:nat) (l : (list (prod nat flat_exp)))(c:flat_com),
+
+In (System x)
+       (collect_declared_vars_flatcom
+          (snd (declare_everything index l c)))->(~ In x (map fst l))->
+(In (System x) (collect_declared_vars_flatcom c)).
+Proof. induction l; mycrush. Qed.
+
+Lemma declare_everything_unique: forall (index : nat) (l : (list (prod nat flat_exp))) (c : flat_com), 
+NoDup (map fst l)->unique_decl_flat c -> (forall x, In x (map fst l)-> ~In (System x) (collect_declared_vars_flatcom c))->
+unique_decl_flat (snd (declare_everything index l c)).
+Proof. induction l; crush. unfold unique_decl_flat.
+  unfold collect_declared_vars_flatcom. fold collect_declared_vars_flatcom.
+  apply NoDup_cons. 
+  - crush. apply H1 with (x:=a0). auto. unfold not.
+    rename l into l0. rename index into index0.
+    apply declare_everything_is_union with (index:=index0)(l:=l0);auto.
+    rewrite NoDup_cons_iff in H; crush.
+    
+  - apply IHl.
+    Focus 3. intros. assert(a0 = x \/ In x (map fst l)). crush.
+    apply H1 in H4. auto. auto.
+  rewrite NoDup_cons_iff in H. crush. auto.
+Qed. 
+
 Lemma flatten_unique : forall (c : com), (unique_decl_com c) -> (user_var_only c) -> unique_decl_flat (flatten c).
 
 Admitted.
