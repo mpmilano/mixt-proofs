@@ -267,25 +267,25 @@ Definition last_index index (l : (list nat )) : nat:=
 
 Definition next_index' index l := S (last_index index l). 
 (* Order: list hd is last declaration, list tail is first.  2nd elem of outer pair is a varref.*)
-Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) var
+Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) nat
   := match e with 
-       | Var x => ((index,Flat_Var x)::[],System index)
+       | Var x => ((index,Flat_Var x)::[],index)
        | Binop e₁ op e₂ =>
          let (decls_e2, ref_e2) := (flatten_exp' (S index) e₂) in
          let (decls_e1, ref_e1) := ((flatten_exp' (next_index' (S index) (map fst decls_e2)) e₁)) in
-         let binop_decl := (index, Flat_Binop ref_e1 op ref_e2) in
-         ( binop_decl :: decls_e2 ++ decls_e1, System index)
+         let binop_decl := (index, Flat_Binop (System ref_e1) op (System ref_e2)) in
+         ( binop_decl :: decls_e2 ++ decls_e1, index)
        | Not e =>
          ((match (flatten_exp' (S index) e) with
-             | (decls,ref) => (index, (Flat_Not ref))::decls
-           end), System index)
-       | Const x => ((index,Flat_Const x)::[],System index)
-       | Tt => ((index,Flat_Tt)::[],System index)
-       | Ff => ((index,Flat_Ff)::[],System index)
+             | (decls,ref) => (index, (Flat_Not (System ref)))::decls
+           end), index)
+       | Const x => ((index,Flat_Const x)::[],index)
+       | Tt => ((index,Flat_Tt)::[],index)
+       | Ff => ((index,Flat_Ff)::[],index)
        | Deref e =>
          (match (flatten_exp' (S index) e) with
-           | (decls,ref) => (index,(Flat_Deref ref))::decls
-         end, System index)
+           | (decls,ref) => (index,(Flat_Deref (System ref)))::decls
+         end, index)
      end.
 
 
@@ -434,12 +434,12 @@ h::t=(fst (flatten_exp' index e)) -> index = fst h.
 induction e; mycrush.
 Qed.
 
-Lemma last_default_irrelevant : forall (n a:nat)( l:list nat),
+Lemma last_default_irrelevant : forall {A} (n a: A)( l:list A),
   last (n::l) a = last (n::l) n.
 Proof. induction l; crush. destruct l; auto.
 Qed.
 
-Lemma last_default_irrelevant' : forall (b n a:nat)( l:list nat),
+Lemma last_default_irrelevant' : forall {A} (b n a: A)( l:list A),
   last (n::l) a = last (n::l) b.
 Proof. induction l; crush. destruct l; auto.
 Qed.
@@ -550,12 +550,50 @@ Proof.
       specialize (seq_concat _ _ _ H2 H1). crush. 
 Qed.
 
-Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, var).
+Definition flatten_exp index e := let (tmpl,var) := (flatten_exp' index e) in (List.rev tmpl, System var).
 
-Definition stupid := (0,Flat_Var (System 0)).
+Definition stupid index := (index,Flat_Var (System index)).
 
-Lemma flatten_exp_returns_right_nat : forall e index, (snd (flatten_exp' index e)) = (System (fst (last (fst (flatten_exp' index e)) stupid ))).
-  induction e; try (mycrush; tauto). intros. Admitted.
+
+Ltac destruct_match :=
+  match goal with
+    | [|- context [match ?e with | [] => _ | _::_ => _ end] ] =>
+      remember e as match_expr; destruct match_expr
+  end.
+
+Eval compute in (flatten_exp' 0 (Binop Tt Or (Binop (Not (Not Tt)) And Ff))).
+
+Eval compute in (flatten_exp' 0 (Not (Not (Tt)))).
+
+Lemma flatten_exp'_returns_right_nat : forall e index, (snd (flatten_exp' index e)) = (fst (hd (stupid index) (fst (flatten_exp' index e)) )).
+  induction e; mycrush.
+Qed.
+
+Ltac remove_ctr Ctr := match goal with
+                         | [|- Ctr ?e1 = Ctr ?e2] =>
+                           assert ((e1 = e2) -> (Ctr e1 = Ctr e2)) as Hremove_ctr by crush;
+                             apply Hremove_ctr; clear Hremove_ctr
+                       end.
+
+Lemma nil_app_comm : forall {A : Type} (l1 l2 : list A), ([] = l1 ++ l2) -> ([] = l2 ++ l1).
+  induction l1; induction l2; crush.
+Qed.
+
+Lemma last_is_last : forall {A : Type} (l : list A) (a d: A), last (l ++ [a]) d = a.
+  induction l; crush. destruct_match; crush. apply nil_app_comm in Heqmatch_expr. crush. 
+Qed.
+
+Lemma last_rev_is_fst : forall {A} (l : list A) (d : A), (last (rev l) d) = (hd d l).
+  induction l; try (crush; tauto).
+  intros. crush. rewrite last_is_last. crush. 
+Qed.
+
+
+Lemma flatten_exp_returns_right_nat : forall e index, (snd (flatten_exp index e)) = (System (fst (last (fst (flatten_exp index e)) (stupid index) ))).
+  intros. unfold flatten_exp. mycrush.
+  rewrite last_rev_is_fst.
+  remove_ctr System. apply flatten_exp'_returns_right_nat. 
+Qed.
 
 
 Definition next_index (index : nat) (l : list (prod nat flat_exp)) :=
