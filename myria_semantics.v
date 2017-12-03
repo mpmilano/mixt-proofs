@@ -595,46 +595,6 @@ Lemma flatten_exp_returns_right_nat : forall e index, (snd (flatten_exp index e)
   remove_ctr System. apply flatten_exp'_returns_right_nat. 
 Qed.
 
-(*Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) nat *)
-
-(* Inductive flat_exp : Type := 
-| Flat_Const : nat -> flat_exp
-| Flat_Var : var -> flat_exp
-| Flat_Binop : var -> binop -> var -> flat_exp
-| Flat_Tt : flat_exp
-| Flat_Ff : flat_exp
-| Flat_Not : var -> flat_exp
-| Flat_Deref : var -> flat_exp. *)
-
-Fixpoint bound_in (v : var) (l : list (prod nat flat_exp)) : bool :=
-  match v with
-      | System var =>  
-        match l with
-          | [] => false
-          | (var',_)::tl => (Nat.eqb var var') || (bound_in v tl)
-        end 
-      | User _ => false
-  end.
-
-Fixpoint bound_exp' (e : flat_exp) (l : list (prod nat flat_exp)) : bool := 
-  match e with
-    | Flat_Const _ => true
-    | Flat_Tt => true
-    | Flat_Ff => true
-    | Flat_Var var => bound_in var l
-    | Flat_Not var => bound_in var l
-    | Flat_Deref var => bound_in var l
-    | Flat_Binop var1 op var2 => ((bound_in var1 l) && (bound_in var2 l))
-  end.
-
-Lemma flatten_exp'_all_bound : forall e interim l1 l2 index, (fst((flatten_exp' index e)) = (l1 ++ interim ::l2)) ->  ((bound_exp' (snd interim) l1) = true).
-  Ltac trivial_case := match goal with | [H : [(?index,?ex)] = [(?a,?b)] |- _] => assert (b = ex) by crush; subst; tauto end.
-  induction e; induction l1; induction l2; mycrush.
-  - trivial_case.
-  - admit.
-  - admit.
-  - assert ((Flat_Var v) = b) by crush. subst. (*BREAK Apparently this isn't true, or somehow we got into an impossible case*)
-Admitted. 
 
 Definition next_index (index : nat) (l : list (prod nat flat_exp)) :=
   match l with
@@ -673,6 +633,7 @@ Fixpoint flatten' (index : nat) (c : com) : (prod nat flat_com) :=
                            let next_ind := next_index index lst in
                            let (_,body) := (flatten' next_ind s) in
                            declare_everything (index_from_var ref) lst (Flat_Declaration x (Flat_Var ref) body )
+      (*recursively calls flatten'*)
     | If c t e => let (lst,ref) := flatten_exp index c in
                   let next_ind := next_index index lst in
                   let (next_index, flat_t) := (flatten' next_ind t) in
@@ -744,8 +705,103 @@ Proof. induction l; crush. unfold unique_decl_flat.
   rewrite NoDup_cons_iff in H. crush. auto.
 Qed. 
 
-Lemma flatten_unique : forall (c : com), (unique_decl_com c) -> (user_var_only c) -> unique_decl_flat (flatten c).
+Lemma collect_declare_everything: 
+ forall (index : nat) (l : (list (prod nat flat_exp))) (c : flat_com),
+  collect_declared_vars_flatcom (snd (declare_everything index l c))
+  = (map (fun x=> System x) (map fst l) ) ++ collect_declared_vars_flatcom c.
+Proof. induction l; mycrush.
+Qed.
 
+
+
+
+Lemma flatten'_index_increase: forall c x index, 
+  In (System x) (collect_declared_vars_flatcom (snd (flatten' index c)))
+  -> index <= x.
+
+Proof. induction c; mycrush.
+- rewrite collect_declare_everything in H. apply in_app_or in H.
+  unfold collect_declared_vars_flatcom in H.  admit.
+- rewrite collect_declare_everything in H. apply in_app_or in H.
+  unfold collect_declared_vars_flatcom in H.
+  fold collect_declared_vars_flatcom in H.
+Abort.
+
+
+Lemma sequential_is_seq: forall l a, is_sequential (a::l)
+-> seq a (length (a::l)) = a::l.
+Proof. induction l; crush.
+Qed.
+
+
+Lemma sequential_nodup: forall l, is_sequential l -> NoDup l.
+Proof. Hint Constructors NoDup. destruct l. intro; auto.
+      intro. apply sequential_is_seq in H. rewrite <- H.
+      apply seq_NoDup.
+Qed.
+  
+
+Lemma flatten_unique : forall (c : com)(index:nat), (unique_decl_com c) -> (user_var_only c) 
+-> unique_decl_flat (snd (flatten' index c)).
+Hint Constructors NoDup.
+Proof. induction c; mycrush. 
+  - apply declare_everything_unique.
+    + admit. (*follows from sequential*)
+    + unfold unique_decl_flat.
+      unfold collect_declared_vars_flatcom. auto .
+    + unfold collect_declared_vars_flatcom. intros. auto.
+  -  
+    apply declare_everything_unique.
+    + admit.
+    + unfold unique_decl_flat. unfold collect_declared_vars_flatcom.
+    fold collect_declared_vars_flatcom. 
+    destruct v.
+   unfold unique_decl_com in H. 
+   unfold collect_declared_vars_com in H.
+   fold collect_declared_vars_com in H.
+   unfold flatten in IHc. unfold unique_decl_com in IHc.
+   rewrite NoDup_cons_iff in H. destruct H. 
+   assert (NoDup (collect_declared_vars_flatcom
+        (snd
+           (flatten'
+              (next_index index
+                 (fst (flatten_exp index e))) c)))).
+  apply IHc. auto. auto.
+  
+  (*need: user variables are the same before and after flatten*)
+  admit. exfalso;auto. 
+  +
+  unfold collect_declared_vars_flatcom.
+  fold collect_declared_vars_flatcom.
+  destruct v. Focus 2. exfalso;auto.
+  intros. unfold not. intro. destruct H2. congruence.
+  apply flatten'_index_increase in H2.
+  (*flatten_exp property*) admit. 
+  - apply declare_everything_unique.
+    + admit.
+    + unfold unique_decl_flat.
+      unfold collect_declared_vars_flatcom. auto.
+    + unfold  collect_declared_vars_flatcom. intros. auto.
+  - apply declare_everything_unique.
+    + admit.
+    + apply declare_everything_unique.
+      * admit.
+      * unfold unique_decl_flat.
+        unfold collect_declared_vars_flatcom. auto.
+      * unfold  collect_declared_vars_flatcom. intros. auto.
+    + unfold collect_declared_vars_flatcom.
+  fold collect_declared_vars_flatcom.
+  intros. unfold not. intro. rewrite collect_declare_everything in H2. admit. (*need statement about flatten_exp*)
+  - apply declare_everything_unique.
+    + admit.
+    + unfold unique_decl_flat.
+      unfold collect_declared_vars_flatcom. auto.
+    +  unfold  collect_declared_vars_flatcom. intros. auto.
+  - apply declare_everything_unique.
+    + admit.
+    + unfold unique_decl_flat.
+      unfold collect_declared_vars_flatcom. auto.
+    + unfold  collect_declared_vars_flatcom. intros. auto.
 Admitted.
 
 
