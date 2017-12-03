@@ -595,6 +595,46 @@ Lemma flatten_exp_returns_right_nat : forall e index, (snd (flatten_exp index e)
   remove_ctr System. apply flatten_exp'_returns_right_nat. 
 Qed.
 
+(*Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) nat *)
+
+(* Inductive flat_exp : Type := 
+| Flat_Const : nat -> flat_exp
+| Flat_Var : var -> flat_exp
+| Flat_Binop : var -> binop -> var -> flat_exp
+| Flat_Tt : flat_exp
+| Flat_Ff : flat_exp
+| Flat_Not : var -> flat_exp
+| Flat_Deref : var -> flat_exp. *)
+
+Fixpoint bound_in (v : var) (l : list (prod nat flat_exp)) : bool :=
+  match v with
+      | System var =>  
+        match l with
+          | [] => false
+          | (var',_)::tl => (Nat.eqb var var') || (bound_in v tl)
+        end 
+      | User _ => false
+  end.
+
+Fixpoint bound_exp' (e : flat_exp) (l : list (prod nat flat_exp)) : bool := 
+  match e with
+    | Flat_Const _ => true
+    | Flat_Tt => true
+    | Flat_Ff => true
+    | Flat_Var var => bound_in var l
+    | Flat_Not var => bound_in var l
+    | Flat_Deref var => bound_in var l
+    | Flat_Binop var1 op var2 => ((bound_in var1 l) && (bound_in var2 l))
+  end.
+
+Lemma flatten_exp'_all_bound : forall e interim l1 l2 index, (fst((flatten_exp' index e)) = (l1 ++ interim ::l2)) ->  ((bound_exp' (snd interim) l1) = true).
+  Ltac trivial_case := match goal with | [H : [(?index,?ex)] = [(?a,?b)] |- _] => assert (b = ex) by crush; subst; tauto end.
+  induction e; induction l1; induction l2; mycrush.
+  - trivial_case.
+  - admit.
+  - admit.
+  - assert ((Flat_Var v) = b) by crush. subst. (*BREAK Apparently this isn't true, or somehow we got into an impossible case*)
+Admitted. 
 
 Definition next_index (index : nat) (l : list (prod nat flat_exp)) :=
   match l with
