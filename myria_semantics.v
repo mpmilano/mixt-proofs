@@ -5,15 +5,17 @@ Open Scope list_scope.
 
 Import ListNotations.
 
-Inductive var : Type :=
-| User : nat -> var
-| System : nat -> var.
+Inductive flat_var : Type :=
+| User : nat -> flat_var
+| System : nat -> flat_var.
+
+Definition surface_var := nat.
 
 Inductive binop := Plus | Times | Minus | And | Or | Eq.
 
 Inductive exp : Type := 
 | Const : nat -> exp
-| Var : var -> exp
+| Var : surface_var -> exp
 | Binop : exp -> binop -> exp -> exp
 | Tt : exp
 | Ff : exp
@@ -23,8 +25,8 @@ Inductive exp : Type :=
 Inductive com : Type := 
 | Skip : com
 | Return : exp -> com
-| Declaration : var -> exp -> com -> com 
-| Assign_var : var -> exp -> com
+| Declaration : surface_var -> exp -> com -> com 
+| Assign_var : surface_var -> exp -> com
 | Assign_ptr : exp -> exp -> com
 | Seq : com -> com -> com
 | If : exp -> com -> com -> com
@@ -33,97 +35,116 @@ Inductive com : Type :=
 Inductive value : Type :=
 | Nat_value : nat -> value
 | Bool_value : bool -> value
-| Remote_value : var -> value.
+| Remote_value : flat_var -> value.
 Inductive answer : Type :=
 | Value : value -> answer
 | TypeError : answer.
 
 Inductive flat_exp : Type := 
 | Flat_Const : nat -> flat_exp
-| Flat_Var : var -> flat_exp
-| Flat_Binop : var -> binop -> var -> flat_exp
+| Flat_Var : flat_var -> flat_exp
+| Flat_Binop : flat_var -> binop -> flat_var -> flat_exp
 | Flat_Tt : flat_exp
 | Flat_Ff : flat_exp
-| Flat_Not : var -> flat_exp
-(*This one doesn't exist: *)| Flat_Deref : var -> flat_exp.
+| Flat_Not : flat_var -> flat_exp
+(*This one doesn't exist: *)| Flat_Deref : flat_var -> flat_exp.
 
 Inductive flat_com : Type := 
 | Flat_Skip : flat_com
-| Flat_Return : var -> flat_com
-| Flat_Declaration : var -> flat_exp -> flat_com -> flat_com 
-| Flat_Assign_var : var -> var -> flat_com
-| Flat_Assign_ptr : var -> var -> flat_com
+| Flat_Return : flat_var -> flat_com
+| Flat_Declaration : flat_var -> flat_exp -> flat_com -> flat_com 
+| Flat_Assign_var : flat_var -> flat_var -> flat_com
+| Flat_Assign_ptr : flat_var -> flat_var -> flat_com
 | Flat_Seq : flat_com -> flat_com -> flat_com
-| Flat_If : var -> flat_com -> flat_com -> flat_com
-| Flat_While : var -> flat_com -> flat_com.
+| Flat_If : flat_var -> flat_com -> flat_com -> flat_com
+| Flat_While : flat_var -> flat_com -> flat_com.
 
 Inductive flat_value : Type :=
 | Flat_Nat_value : nat -> flat_value
 | Flat_Bool_value : bool -> flat_value
-| Flat_Remote_value : var -> flat_value.
+| Flat_Remote_value : flat_var -> flat_value.
 Inductive flat_answer : Type :=
 | Flat_Value : flat_value -> flat_answer
 | Flat_TypeError : flat_answer. 
 
-Definition local_state := var -> option value.
+Definition local_state := flat_var -> option value.
 
 Definition σ : local_state := (fun _ => None).
 
-Definition remote_state := var -> option value.
+Definition remote_state := flat_var -> option value.
 
 Definition ρ : remote_state := (fun _ => None).
 
 Definition state := prod local_state remote_state.
 
-
-Definition get_remote (x:var) (s:state) : option value :=
+Definition get_remote_flat (x:flat_var) (s:state) : option value :=
   match s with
     | (_,s') => s' x
   end.
 
-Definition get_local (x:var) (s:state) : option value :=
+
+Definition get_remote_surface (x:surface_var) (s:state) : option value :=
+  get_remote_flat (User x) s.
+
+Definition get_local_flat (x:flat_var) (s:state) : option value :=
   match s with
     | (s',_) => s' x
   end.
 
-Definition get (x : var) (s : state) : option value :=
-  match (get_local x s) with
+Definition get_local_surface (x:surface_var) (s:state) : option value :=
+  get_local_flat (User x) s.
+
+
+Definition get_flat (x : flat_var) (s : state) : option value :=
+  match (get_local_flat x s) with
     | Some y => Some y
-    | None => get_remote x s
+    | None => get_remote_flat x s
   end.
 
+Definition get_surface (x : surface_var) (s : state) : option value :=
+  get_flat (User x) s.
 
-Definition set_remote (x:var) (n:value) (s':state) : state :=
+
+Definition set_remote_flat (x:flat_var) (n:value) (s':state) : state :=
   match s' with
     | (l,s) =>  (l,
                  (fun y =>
                     match (x,y) with
-                      | (User x', User y') => if Nat.eqb x' y' then Some n else get y s'
-                      | (System x', System y') => if Nat.eqb x' y' then Some n else get y s'
-                      | _ => get y s'
+                      | (User x', User y') => if Nat.eqb x' y' then Some n else get_flat y s'
+                      | (System x', System y') => if Nat.eqb x' y' then Some n else get_flat y s'
+                      | _ => get_flat y s'
                     end))
     end.
 
-Definition set_local (x:var) (n:value) (s':state) : state :=
+Definition set_remote_surface (x:surface_var) (n:value) (s':state) : state :=
+  set_remote_flat (User x) n s'.
+
+
+Definition set_local_flat (x:flat_var) (n:value) (s':state) : state :=
   match s' with
     | (s,r) =>  (
         (fun y =>
            match (x,y) with
-             | (User x', User y') => if Nat.eqb x' y' then Some n else get y s'
-             | (System x', System y') => if Nat.eqb x' y' then Some n else get y s'
-             | _ => get y s'
+             | (User x', User y') => if Nat.eqb x' y' then Some n else get_flat y s'
+             | (System x', System y') => if Nat.eqb x' y' then Some n else get_flat y s'
+             | _ => get_flat y s'
            end),r)
-    end.
+  end.
 
-Definition set (x:var) (n:value) (s:state) : state :=
-  match (get_local x s) with
-    | Some _ => set_local x n s
-    | None => (match get_remote x s with
-                 | Some _ => set_remote x n s
-                 | None => set_local x n s
+Definition set_local_surface (x:surface_var) (n:value) (s':state) : state :=
+  set_local_flat (User x) n s'.
+
+Definition set_flat (x:flat_var) (n:value) (s:state) : state :=
+  match (get_local_flat x s) with
+    | Some _ => set_local_flat x n s
+    | None => (match get_remote_flat x s with
+                 | Some _ => set_remote_flat x n s
+                 | None => set_local_flat x n s
               end)
   end.
 
+Definition set_surface (x : surface_var) (n : value) ( s : state) : state :=
+  set_flat (User x) n s.
 
 Definition eval_binop (b:binop) : nat -> nat -> nat := 
   match b with 
@@ -151,14 +172,14 @@ Definition eval_binop (b:binop) : nat -> nat -> nat :=
 Fixpoint eval_exp (e:exp) (s:state) : answer := 
   match e with 
     | Const n => ret (Nat_value n)
-    | Var x => match (get x s) with
+    | Var x => match (get_surface x s) with
                  | Some e => ret e
                  | None => TypeError
                end
     | Deref e =>
       match (eval_exp e s) with
         | Value (Remote_value x) =>
-          match (get x s) with | None => TypeError
+          match (get_flat x s) with | None => TypeError
                             | Some a => ret a
           end
         | _ => TypeError
@@ -184,8 +205,11 @@ Inductive imp_type :=
 | Bool_type : imp_type
 .
 
-Definition is_declared x s :=
-  match (get x s) with | Some _ => true | None => false end.
+Definition is_declared_flat (x : flat_var) s :=
+  match (get_flat x s) with | Some _ => true | None => false end.
+
+Definition is_declared_surface (x : surface_var) s :=
+  is_declared_flat (User x) s.
 
 Definition type_matches ( l r : answer)  :=
   match (l,r) with
@@ -221,29 +245,29 @@ Fixpoint step_com_fn (cmd : com) (s : state) : option (com * state * (option val
                     | TypeError => None
                   end
     | Declaration x e next =>
-      match (is_declared x s) with
+      match (is_declared_surface x s) with
         | true => None
         | false =>
           match (eval_exp e s) with
-            | Value ans => Some (next , (set x ans s), None)
+            | Value ans => Some (next , (set_surface x ans s), None)
             | TypeError => None
           end
       end
-    | Assign_var x e => if (is_declared x s)
-                             && (type_matches_op (ret_op (get x s)) (Some (eval_exp e s)))
+    | Assign_var x e => if (is_declared_surface x s)
+                             && (type_matches_op (ret_op (get_surface x s)) (Some (eval_exp e s)))
                         then
                           match (eval_exp e s) with
-                            | Value ans => Some (Skip , (set_local x ans s), None)
+                            | Value ans => Some (Skip , (set_local_surface x ans s), None)
                             | TypeError => None
                           end
                         else None
     | Assign_ptr x' e => match (eval_exp x' s) with
                            | Value (Remote_value x) =>
-                             if (is_declared x s)
-                                  && (type_matches_op (ret_op (get x s)) (Some (eval_exp e s)))
+                             if (is_declared_flat x s)
+                                  && (type_matches_op (ret_op (get_flat x s)) (Some (eval_exp e s)))
                              then
                                match (eval_exp e s) with
-                                 | Value ans => Some (Skip , (set_remote x ans s), None)
+                                 | Value ans => Some (Skip , (set_remote_flat x ans s), None)
                                  | TypeError => None
                           end
                              else None
@@ -269,7 +293,7 @@ Definition next_index' index l := S (last_index index l).
 (* Order: list hd is last declaration, list tail is first.  2nd elem of outer pair is a varref.*)
 Fixpoint flatten_exp' (index : nat) (e : exp) : prod (list (prod nat flat_exp)) nat
   := match e with 
-       | Var x => ((index,Flat_Var x)::[],index)
+       | Var x => ((index,Flat_Var (User x))::[],index)
        | Binop e₁ op e₂ =>
          let (decls_e2, ref_e2) := (flatten_exp' (S index) e₂) in
          let (decls_e1, ref_e1) := ((flatten_exp' (next_index' (S index) (map fst decls_e2)) e₁)) in
@@ -603,7 +627,6 @@ Definition next_index (index : nat) (l : list (prod nat flat_exp)) :=
   end.
 
 
-(* To change:   have it return the next System variable available too *)
 Fixpoint declare_everything (index : nat) (l : (list (prod nat flat_exp))) (c : flat_com)  : (prod nat flat_com) :=
   ((next_index index l),
   match l return flat_com with
@@ -612,7 +635,7 @@ Fixpoint declare_everything (index : nat) (l : (list (prod nat flat_exp))) (c : 
   end).
 
 
-Definition index_from_var (v : var) : nat :=
+Definition index_from_var (v : flat_var) : nat :=
   match v with
     | System n => n
     | User n => n
@@ -623,7 +646,7 @@ Fixpoint flatten' (index : nat) (c : com) : (prod nat flat_com) :=
     | Return e => let (lst,ref) := flatten_exp index e in
                   declare_everything (index_from_var ref) lst (Flat_Return ref)
     | Assign_var y e => let (lst,ref) := flatten_exp index e in
-                        declare_everything (index_from_var ref) lst (Flat_Assign_var y ref)
+                        declare_everything (index_from_var ref) lst (Flat_Assign_var (User y) ref)
     | Assign_ptr y e => let (lst,ref) := flatten_exp index e in
                         let index' := match ref with | System x => S x | User _ => index end in
                         let (lst2,ref2) := flatten_exp index' y in
@@ -632,7 +655,7 @@ Fixpoint flatten' (index : nat) (c : com) : (prod nat flat_com) :=
     | Declaration x e s => let (lst,ref) := flatten_exp index e in
                            let next_ind := next_index index lst in
                            let (_,body) := (flatten' next_ind s) in
-                           declare_everything (index_from_var ref) lst (Flat_Declaration x (Flat_Var ref) body )
+                           declare_everything (index_from_var ref) lst (Flat_Declaration (User x) (Flat_Var ref) body )
       (*recursively calls flatten'*)
     | If c t e => let (lst,ref) := flatten_exp index c in
                   let next_ind := next_index index lst in
@@ -652,13 +675,13 @@ Fixpoint flatten' (index : nat) (c : com) : (prod nat flat_com) :=
 
 Definition flatten (c : com) : flat_com := snd (flatten' 0 c).
 
-Fixpoint collect_declared_vars_com (c:com) : list var :=
+Fixpoint collect_declared_vars_com (c:com) : list surface_var :=
   match c with
     | Declaration x e rest => x::collect_declared_vars_com rest
     | _ => []
   end.
 
-Fixpoint collect_declared_vars_flatcom (c:flat_com) : list var :=
+Fixpoint collect_declared_vars_flatcom (c:flat_com) : list flat_var :=
   match c with
     | Flat_Declaration x e rest => x::collect_declared_vars_flatcom rest
     | _ => []
@@ -669,15 +692,6 @@ Definition unique_decl_com (c:com): Prop :=
   NoDup (collect_declared_vars_com c).
 Definition unique_decl_flat (c:flat_com): Prop :=
   NoDup (collect_declared_vars_flatcom c).
-Fixpoint user_var_only (c:com): Prop :=
-  match c with
-    | Declaration x e rest =>
-        match x with
-          | User _ => user_var_only rest
-          | System _ => False
-        end
-    | _ => True
-  end.
 
 Lemma declare_everything_is_union:
 forall (x index:nat) (l : (list (prod nat flat_exp)))(c:flat_com),
@@ -725,7 +739,7 @@ Proof. induction c; mycrush.
 - rewrite collect_declare_everything in H. apply in_app_or in H.
   unfold collect_declared_vars_flatcom in H.
   fold collect_declared_vars_flatcom in H.
-Abort.
+Admitted. 
 
 
 Lemma sequential_is_seq: forall l a, is_sequential (a::l)
@@ -741,10 +755,9 @@ Proof. Hint Constructors NoDup. destruct l. intro; auto.
 Qed.
   
 
-Lemma flatten_unique : forall (c : com)(index:nat), (unique_decl_com c) -> (user_var_only c) 
--> unique_decl_flat (snd (flatten' index c)).
+Lemma flatten_unique : forall (c : com)(index:nat), (unique_decl_com c) -> unique_decl_flat (snd (flatten' index c)).
 Hint Constructors NoDup.
-Proof. induction c; mycrush. 
+Proof. induction c; mycrush; try (unfold unique_decl_flat; mycrush; tauto). 
   - apply declare_everything_unique.
     + admit. (*follows from sequential*)
     + unfold unique_decl_flat.
@@ -755,27 +768,15 @@ Proof. induction c; mycrush.
     + admit.
     + unfold unique_decl_flat. unfold collect_declared_vars_flatcom.
     fold collect_declared_vars_flatcom. 
-    destruct v.
-   unfold unique_decl_com in H. 
-   unfold collect_declared_vars_com in H.
-   fold collect_declared_vars_com in H.
-   unfold flatten in IHc. unfold unique_decl_com in IHc.
-   rewrite NoDup_cons_iff in H. destruct H. 
-   assert (NoDup (collect_declared_vars_flatcom
-        (snd
-           (flatten'
-              (next_index index
-                 (fst (flatten_exp index e))) c)))).
-  apply IHc. auto. auto.
-  
-  (*need: user variables are the same before and after flatten*)
-  admit. exfalso;auto. 
+    unfold unique_decl_com in H. 
+    unfold flatten in IHc. unfold unique_decl_com in IHc.
+    (*need: user variables are the same before and after flatten*)
+    admit.
   +
   unfold collect_declared_vars_flatcom.
   fold collect_declared_vars_flatcom.
-  destruct v. Focus 2. exfalso;auto.
-  intros. unfold not. intro. destruct H2. congruence.
-  apply flatten'_index_increase in H2.
+  intros. unfold not. intro H2. destruct H2. congruence.
+  apply flatten'_index_increase in H1.
   (*flatten_exp property*) admit. 
   - apply declare_everything_unique.
     + admit.
@@ -791,7 +792,7 @@ Proof. induction c; mycrush.
       * unfold  collect_declared_vars_flatcom. intros. auto.
     + unfold collect_declared_vars_flatcom.
   fold collect_declared_vars_flatcom.
-  intros. unfold not. intro. rewrite collect_declare_everything in H2. admit. (*need statement about flatten_exp*)
+  intros. unfold not. intro. rewrite collect_declare_everything in H1. admit. (*need statement about flatten_exp*)
   - apply declare_everything_unique.
     + admit.
     + unfold unique_decl_flat.
@@ -808,22 +809,22 @@ Admitted.
 Fixpoint eval_flat_exp (e:flat_exp) (s:state) : answer := 
   match e with 
     | Flat_Const n => ret (Nat_value n)
-    | Flat_Var x => match (get x s) with
+    | Flat_Var x => match (get_flat x s) with
                       | Some e => ret e
                       | None => TypeError
                     end
     | Flat_Deref x =>
-      match (get x s) with
+      match (get_flat x s) with
         | Some (Remote_value x) =>
-          match (get x s) with | None => TypeError
+          match (get_flat x s) with | None => TypeError
                             | Some a => ret a
           end
         | _ => TypeError
       end
     | Flat_Binop e1 b e2 =>
-      match (get e1 s) with
+      match (get_flat e1 s) with
         | Some (Nat_value _fst) =>
-          match (get e2 s) with
+          match (get_flat e2 s) with
             | Some (Nat_value _snd) => ret (Nat_value ((eval_binop b) _fst _snd))
             | _ => TypeError
           end
@@ -832,7 +833,7 @@ Fixpoint eval_flat_exp (e:flat_exp) (s:state) : answer :=
     | Flat_Tt => ret (Bool_value true)
     | Flat_Ff => ret (Bool_value false)
     | Flat_Not b =>
-      match (get b s) with
+      match (get_flat b s) with
         | Some (Bool_value tmp) => ret (Bool_value (negb tmp))
         | _ => TypeError
       end
@@ -851,44 +852,44 @@ Fixpoint step_com_flat (cmd : flat_com) (s : state) : option (flat_com * state *
               | _ => Some (c2, s, None)
       end)
     | Flat_Skip => None
-    | Flat_Return x => match (get x s) with
+    | Flat_Return x => match (get_flat x s) with
                          | Some ans => Some (Flat_Skip, s, Some ans)
                          | None => None
                        end
     | Flat_Declaration x e next =>
-      match (is_declared x s) with
+      match (is_declared_flat x s) with
         | true => None
         | false =>
           match (eval_flat_exp e s) with
-            | Value ans => Some (next , (set x ans s), None)
+            | Value ans => Some (next , (set_flat x ans s), None)
             | TypeError => None
           end
       end
     | Flat_Assign_var x y =>
-      match (get x s) with
+      match (get_flat x s) with
         | None => None
         | Some ans => 
-          if (is_declared x s)
+          if (is_declared_flat x s)
           then
-            match (get y s) with
-              | Some ans => Some (Flat_Skip , (set_local x ans s), None)
+            match (get_flat y s) with
+              | Some ans => Some (Flat_Skip , (set_local_flat x ans s), None)
               | None => None
             end
           else None
       end
     | Flat_If condition thn els =>
-      match (get condition s) with
+      match (get_flat condition s) with
         | Some (Bool_value true) => Some (thn, s, None)
         | Some (Bool_value false) => Some (els, s, None)
         | _ => None
       end
     | Flat_While condition thn => Some ((Flat_If condition (Flat_Seq thn cmd) Flat_Skip), s, None)
-    | Flat_Assign_ptr x' e => match (get x' s) with
+    | Flat_Assign_ptr x' e => match (get_flat x' s) with
                                 | Some (Remote_value x) =>
-                                  if (is_declared x s)
+                                  if (is_declared_flat x s)
                                   then
-                                    match (get e s) with
-                                      | Some ans => Some (Flat_Skip , (set_remote x ans s), None)
+                                    match (get_flat e s) with
+                                      | Some ans => Some (Flat_Skip , (set_remote_flat x ans s), None)
                                       | None => None
                                     end
                                   else None
