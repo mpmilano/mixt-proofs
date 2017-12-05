@@ -620,6 +620,64 @@ Lemma flatten_exp_returns_right_nat : forall e index, (snd (flatten_exp index e)
 Qed.
 
 
+Fixpoint system_bound_in (v : flat_var) (l : list (prod nat flat_exp)) : bool :=
+  match v with
+      | System var =>  
+        match l with
+          | [] => false
+          | (var',_)::tl => (Nat.eqb var var') || (system_bound_in v tl)
+        end 
+      | User _ => true
+  end.
+
+Fixpoint bound_system_exp' (e : flat_exp) (l : list (prod nat flat_exp)) : bool := 
+  match e with
+    | Flat_Const _ => true
+    | Flat_Tt => true
+    | Flat_Ff => true
+    | Flat_Var var => system_bound_in var l
+    | Flat_Not var => system_bound_in var l
+    | Flat_Deref var => system_bound_in var l
+    | Flat_Binop var1 op var2 => ((system_bound_in var1 l) && (system_bound_in var2 l))
+  end.
+
+Lemma list_sizes_match' : forall {A: Type} (l hd tl : A) (mid : list A), [l] = hd :: mid ++ [tl] -> False.
+  induction mid; crush.
+Qed.
+
+Lemma mid_cons_nonempty : forall {A : Type} (a c: list A) (b : A), ([] = a ++ b :: c) -> False.
+  induction a; crush.
+Qed.
+                                                  
+Lemma empty_lists : forall {A : Type} (pre post : list A) (lft mid : A), ([lft] = (pre ++ mid :: post)) -> (pre = []) /\ (post = []).
+  intro A. 
+  specialize (@mid_cons_nonempty A). 
+  induction pre; crush.
+Qed.
+
+Lemma flatten_system_exp'_all_bound : forall e interim l1 l2 index, (fst((flatten_exp' index e)) = (l1 ++ interim ::l2)) ->  ((bound_system_exp' (snd interim) l1) = true).
+  specialize (@empty_lists (nat * flat_exp) ).
+  specialize (@mid_cons_nonempty (nat * flat_exp) ).
+  specialize (@list_sizes_match' (nat * flat_exp)).
+  Ltac empty_lists := match goal with
+                        | [H : [?a] = ?l1 ++ ?e :: ?l2 |- _] =>
+                          assert (l1 = []) by (induction l1; crush); subst;
+                          assert (l2 = []) by (induction l2; crush); subst;
+                          assert (a = e) by crush; subst;
+                          clear H
+                      end.
+  Ltac split_context_pair := match goal with
+                               | [H : (?a,?b) = (?a',?b') |- _] => assert (a = a') by crush; assert (b = b') by crush; clear H
+                             end.
+  
+  induction e; mycrush;
+  (*trivial case*) try (empty_lists; split_context_pair; crush; tauto).
+  - admit.
+  - admit. (*looks easier*)
+  - admit. (*looks like above*)
+
+Admitted. 
+
 Definition next_index (index : nat) (l : list (prod nat flat_exp)) :=
   match l with
     | (n,_)::_ => S n
