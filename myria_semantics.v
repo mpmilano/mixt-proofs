@@ -669,14 +669,20 @@ Lemma flatten_system_exp'_all_bound : forall e interim l1 l2 index, (fst((flatte
   Ltac split_context_pair := match goal with
                                | [H : (?a,?b) = (?a',?b') |- _] => assert (a = a') by crush; assert (b = b') by crush; clear H
                              end.
-  
+  Ltac list_head_equal := match goal with | [H : ?hd::?tl = ?hd'::?tl' |- _] => assert (hd = hd') by crush; assert (tl = tl') by crush end.
+  Ltac generalize4 b a index l2 := generalize dependent b; generalize dependent a; generalize dependent index; generalize dependent l2.
   induction e; mycrush;
   (*trivial case*) try (empty_lists; split_context_pair; crush; tauto).
   - admit.
-  - admit. (*looks easier*)
+  - generalize4 b a index l2.  induction l1.
+    * induction l2.
+    + intros. simpl in H2. list_head_equal. symmetry in H4. empty_flatten.
+    + intros. simpl in H2. list_head_equal. split_context_pair. subst. specialize (IHl2 (S a0)).
+      . admit. (*looks easier*)
   - admit. (*looks like above*)
 
-Admitted. 
+Admitted.
+
 
 Definition next_index (index : nat) (l : list (prod nat flat_exp)) :=
   match l with
