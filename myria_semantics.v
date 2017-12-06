@@ -865,7 +865,7 @@ Fixpoint flatten' (index : nat) (c : com) : (prod nat flat_com) :=
     | Assign_var y e => let (lst,ref) := flatten_exp index e in
                         declare_everything (index_from_var ref) lst (Flat_Assign_var (User y) ref)
     | Assign_ptr y e => let (lst,ref) := flatten_exp index e in
-                        let index' := match ref with | System x => S x | User _ => S index end in
+                        let index' := next_index index lst in
                         let (lst2,ref2) := flatten_exp index' y in
                         declare_everything (index_from_var ref2) lst2
                                            (snd (declare_everything (index_from_var ref) lst (Flat_Assign_ptr ref2 ref)))
@@ -891,6 +891,8 @@ Fixpoint flatten' (index : nat) (c : com) : (prod nat flat_com) :=
   end.
 
 Definition flatten (c : com) : flat_com := snd (flatten' 0 c).
+
+Eval compute in (flatten (While (Binop Tt And Tt) (Return (Binop Ff And Ff)))).
 
 Fixpoint collect_declared_vars_com (c:com) : list surface_var :=
   match c with
