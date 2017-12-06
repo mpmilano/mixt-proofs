@@ -530,9 +530,14 @@ Lemma flatten_exp'_never_empty': forall n e, [] = map fst (fst (flatten_exp' n e
 Qed.
 
 Ltac empty_flatten := match goal with
+                        | [H : fst (flatten_exp' ?n ?e) = [] |- _] =>
+                          symmetry in H; apply flatten_exp'_never_empty in H
                         | [H : [] = fst (flatten_exp' ?n ?e) |- _] =>
                           apply flatten_exp'_never_empty in H
                         | [H : [] = map fst (fst (flatten_exp' ?n ?e)) |- _] =>
+                          apply flatten_exp'_never_empty' in H
+                        | [H : map fst (fst (flatten_exp' ?n ?e)) = [] |- _] =>
+                          symmetry in H; 
                           apply flatten_exp'_never_empty' in H
                       end; crush; tauto .
 
@@ -684,7 +689,7 @@ Lemma destruct_system_bound_in': forall f (l1 : list (nat * flat_exp)) (hd : nat
   intros. rewrite <- destruct_system_bound_in. apply andb_true_iff in H. destruct H; rewrite H; rewrite H0; tauto.
 Qed. 
 
-Ltac bool_identity := repeat match goal with
+Ltac bool_identity := simpl; repeat match goal with
                               | [|- context [true && ?e] ] => replace (true && e) with e by crush
                               | [|- context [?e && true] ] => replace (e && true) with (e) by (rewrite andb_comm; crush; tauto)
                               | [|- context [false || ?e] ] => replace (false || e) with e by crush
@@ -724,7 +729,12 @@ Lemma empty_rev : forall {A : Type} (l : list A) , ([] = rev l) <-> ([] = l).
   - intros. simpl in H. apply mid_cons_nonempty in H. exfalso; tauto.
 Qed.
 
-Ltac empty_lists := match goal with
+Ltac empty_lists := repeat
+                       match goal with
+                         | [H : ?l1 ++ ?e :: ?l2 = [?a] |- _] => symmetry in H
+                         | [H : ?e :: ?l2 = [?a] |- _] => symmetry in H
+                         | [H : ?l1 ++ [?e] = [?a] |- _] => symmetry in H
+                         | [H : _ = [] |- _] => symmetry in H
                       | [H : [?a] = ?l1 ++ ?e :: ?l2 |- _] =>
                         assert ([] = l1) by (apply empty_lists in H; tauto); subst;
                         assert ([] = l2) by (apply empty_lists in H; tauto); subst;
@@ -770,10 +780,6 @@ Ltac list_size_contradiction := repeat empty_lists; repeat normalize_list_in; tr
 Lemma flatten_exp_exp'_relate : forall index e, (rev (fst (flatten_exp' index e)) = fst (flatten_exp index e)).
   intros. unfold flatten_exp. mycrush. Qed.
 
-Lemma forall_to_fun : forall {A : Type} (e : A) (b : Prop), ((fun (e' : A) => b) e) -> b.
-  crush.
-Qed.
-
 Lemma rev_injective : forall {A : Type} (l1 l2 : list A), (rev l1 = rev l2) -> (l1 = l2).
   induction l1; induction l2;
   try tauto;
@@ -796,8 +802,18 @@ Qed.
 
 Ltac swap_revs H1 := apply rev_injective' in H1; repeat rewrite rev_involutive in H1; simpl in H1; repeat rewrite rev_unit in H1; simpl in H1. 
 
+Lemma revs_swap : forall {A : Type} (l1 l2 : list A), (rev l1 = l2) <-> (rev l2 = l1).
+  split; intros; swap_revs H; crush.
+Qed.
+
+Ltac make_tail := match goal with
+                       | [H : context [?a :: ?b ++ [?tl] ] |- _] => replace (a :: b ++ [tl]) with ((a :: b) ++ [tl]) in H by crush
+                       | [H : context [?a ++ [?b; ?tl] ] |- _] => replace (a ++  [b; tl]) with ((a ++  [b] ) ++ [tl]) in H by crush
+                       | [H : context [?a ++ ?b ++ [?tl]] |- _] => replace (a ++ b ++ [tl]) with ((a ++ b) ++ [tl]) in H by crush
+                  end.
+
 Ltac rev_extract_head :=
-  match goal with
+  repeat make_tail; match goal with
     | [H : rev (?hd :: ?tl) =  [?hd'] |- _] => simpl in H; symmetry in H; empty_lists
     | [H : rev (?hd :: ?tl) = ?tl' ++ [?hd'] |- _] => 
       swap_revs H; repeat normalize_list_in; list_head_equal; subst; lift_into_rev;
@@ -806,29 +822,40 @@ Ltac rev_extract_head :=
       end
   end.
 
-Ltac make_tail tl := repeat match goal with
-                       | [H : context [?a :: ?b ++ [tl] ] |- _] => replace (a :: b ++ [tl]) with ((a :: b) ++ [tl]) in H by crush
-                       | [H : context [?a ++ [?b; tl] ] |- _] => replace (a ++  [b; tl]) with ((a ++  [b] ) ++ [tl]) in H by crush
-                       | [H : context [?a ++ ?b ++ [tl]] |- _] => replace (a ++ b ++ [tl]) with ((a ++ b) ++ [tl]) in H by crush
-                    end.
+Lemma rev_head : forall {A : Type} (hd hd' : A) (tl tl' : list A), (rev (hd :: tl) = tl' ++ [hd']) -> (hd = hd') /\ ((rev tl) = tl').
+  intros. rewrite revs_swap in H. rewrite rev_unit in H. list_head_equal; crush. rewrite rev_involutive. tauto.
+Qed.
 
 Lemma flatten_system_exp_all_bound' : forall e l1 l2 interim index, (fst((flatten_exp index e)) = (l1 ++ interim ::l2)) ->  ((bound_system_exp (snd interim) l1) = true).
-  induction e;
-  (*trivial case*) try (mycrush; empty_lists; split_context_pair; subst; auto; tauto).
-  - admit. (*binop.  I shudder at the sight*)
-  - induction l1 using rev_ind; 
-    induction l2 using rev_ind;
-    (* base case for l1 + l2 induction *)
-    try (mycrush; lift_into_rev; rev_extract_head; list_size_contradiction; tauto);
-    (* base case for l2 induction *)
-    try (mycrush; lift_into_rev; make_tail (a0,b0); rev_extract_head; 
-         split_context_pair; subst; simpl;
-         rewrite <- destruct_system_bound_in_rev; simpl; bool_identity; swap_revs H1; 
-         rewrite flatten_exp'_returns_right_nat; rewrite H1; simpl; apply orb_true_intro; left; symmetry; apply beq_nat_refl; tauto);
-  (* inductive case for l2 induction *)
-    try (intros; rewrite <- flatten_exp_exp'_relate in H; simpl in H; destruct_things; subst; make_tail x; make_tail x0; rev_extract_head; 
-         rewrite flatten_exp_exp'_relate in H1; apply IHe with l2 (S index); tauto).
+  Ltac rev_flatten_exp'_extract_head :=
+    repeat make_tail;
+    match goal with
+      | [H : rev (fst (flatten_exp' _ _)) ++ [_] = [_] |- _] => lift_into_rev; apply (rev_head _ _ _ []) in H; crush; list_size_contradiction; tauto
+      | [H : rev (fst (flatten_exp' ?a ?b)) ++ [?hd] = ?tl' ++ [?hd'] |- _] =>
+        lift_into_rev; apply (rev_head hd hd' (fst (flatten_exp' a b)) tl') in H; crush;
+        match goal with
+          | [H : rev (fst (flatten_exp' _ _)) = _ |- _] => rewrite flatten_exp_exp'_relate in H
+        end
+    end.
 
+  Ltac match_flatten_exp'_bound_structure :=
+    match goal with
+      | [H : context [?l1 ++ ?x :: ?y :: ?l2] |- _ ] => replace (l1 ++ x :: y :: l2) with ((l1 ++ [x]) ++ y :: l2) in H by crush
+      | [H : context [?y :: ?l2] |- _ ] => replace (y :: l2) with ([] ++ y :: l2) in H by crush
+    end.
+  
+  induction e;
+    (*trivial case*) try (mycrush; empty_lists; split_context_pair; subst; auto; tauto);
+  (*single-arg ones*)
+  try (induction l1 using rev_ind; 
+       induction l2 using rev_ind; mycrush; rev_flatten_exp'_extract_head;
+       (* inductive case*)
+       try (match_flatten_exp'_bound_structure; apply IHe in H1; crush; tauto);
+       (* complex base case *)
+       try (mycrush;
+            rewrite <- destruct_system_bound_in_rev;
+            rewrite flatten_exp'_returns_right_nat; bool_identity; rewrite <- flatten_exp_exp'_relate in H1; swap_revs H1;
+            rewrite H1; apply orb_true_intro; left; symmetry; apply beq_nat_refl; tauto); tauto).
 Admitted.
 
 
