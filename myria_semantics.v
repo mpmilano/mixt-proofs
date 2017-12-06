@@ -865,10 +865,10 @@ Fixpoint flatten' (index : nat) (c : com) : (prod nat flat_com) :=
     | Assign_var y e => let (lst,ref) := flatten_exp index e in
                         declare_everything (index_from_var ref) lst (Flat_Assign_var (User y) ref)
     | Assign_ptr y e => let (lst,ref) := flatten_exp index e in
-                        let index' := match ref with | System x => S x | User _ => index end in
+                        let index' := match ref with | System x => S x | User _ => S index end in
                         let (lst2,ref2) := flatten_exp index' y in
-                        declare_everything (index_from_var ref2) lst
-                                           (snd (declare_everything (index_from_var ref) lst2 (Flat_Assign_ptr ref2 ref)))
+                        declare_everything (index_from_var ref2) lst2
+                                           (snd (declare_everything (index_from_var ref) lst (Flat_Assign_ptr ref2 ref)))
     | Declaration x e s => let (lst,ref) := flatten_exp index e in
                            let next_ind := next_index index lst in
                            let (_,body) := (flatten' next_ind s) in
