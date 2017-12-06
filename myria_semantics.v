@@ -744,7 +744,11 @@ Lemma flatten_system_exp_all_bound : forall e interim l1 l2 index, (fst((flatten
       rewrite flatten_exp_exp'_relate in l2'def. symmetry in l2'def. apply IHe in l2'def. tauto.
     * intros. remember_destruct (rev (fst (flatten_exp' (S index) e))) l2' l2'def.
       + repeat empty_lists. empty_flatten.
-      + simpl in H2. list_head_equal. subst. specialize (IHl1 l2 index a0 b).
+      + simpl in H2. list_head_equal. subst. apply induct_bound_system_exp. clear H. clear H0. clear H1. 
+        reassociate_list_in. rewrite l2'def in H2. symmetry in l2'def.
+        rewrite flatten_exp_exp'_relate in l2'def. assert (bound_system_exp (snd a) [] = true) by (apply (IHe a [] l2' (S index)) in l2'def; tauto).
+        
+        
   - admit. (*looks like above*)
 
 Admitted.
