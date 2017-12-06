@@ -343,7 +343,7 @@ induction l; crush.
 rewrite H. auto. auto. auto.
 Qed.
 
-Lemma last_drop_head: forall (l: list nat)(a n0 n:nat),
+Lemma last_drop_head: forall {A:Type}(l: list A)(a n0 n:A),
 last (a::n0::l) n = last (n0::l) n.
 Proof.
 induction l; crush.
@@ -947,20 +947,6 @@ Qed.
 
 
 
-
-Lemma flatten'_index_increase: forall c x index, 
-  In (System x) (collect_declared_vars_flatcom (snd (flatten' index c)))
-  -> index <= x.
-
-Proof. induction c; mycrush.
-- rewrite collect_declare_everything in H. apply in_app_or in H.
-  unfold collect_declared_vars_flatcom in H.  admit.
-- rewrite collect_declare_everything in H. apply in_app_or in H.
-  unfold collect_declared_vars_flatcom in H.
-  fold collect_declared_vars_flatcom in H.
-Admitted. 
-
-
 Lemma sequential_is_seq: forall l a, is_sequential (a::l)
 -> seq a (length (a::l)) = a::l.
 Proof. induction l; crush.
@@ -972,57 +958,347 @@ Proof. Hint Constructors NoDup. destruct l. intro; auto.
       intro. apply sequential_is_seq in H. rewrite <- H.
       apply seq_NoDup.
 Qed.
+
+
+Lemma first_smallest_sequential : forall l a x,
+is_sequential (a::l) -> In x (a::l) -> a <= x.
+Proof. intros. apply sequential_is_seq in H.
+rewrite <- H in H0. rewrite in_seq in H0. omega.
+Qed.
+
+
+Lemma flatten_exp_exp':
+forall index e,
+  fst (flatten_exp index e)= rev (fst (flatten_exp' index e)).
+Proof. intros.  unfold flatten_exp. unfold fst. mycrush.
+Qed.
+
+Lemma map_fst_rev_commute:
+forall {A B:Type}(l:list (prod A B)),
+map fst (rev l) = rev (map fst l).
+Proof. induction l; crush. normalize_map. simpl. crush.
+Qed.
+
+Lemma nodup_rev:
+  forall {A:Type} (l: list A) , NoDup l -> NoDup (rev l).
+Proof. induction l using rev_ind;  crush.
+  rewrite rev_unit. apply NoDup_remove in H. 
+  rewrite app_nil_r in H. destruct H.
+  rewrite NoDup_cons_iff. split. rewrite in_rev in H0. auto. crush.
+Qed.
+Lemma nodup_flatten_exp: forall e index,
+NoDup (map fst (fst (flatten_exp index e))).
+Proof. intros.  rewrite flatten_exp_exp'.
+  rewrite map_fst_rev_commute.
+  assert (NoDup (map fst (fst (flatten_exp' index e)))).
+  assert (is_sequential (map fst (fst (flatten_exp' index e))))
+    by apply flatten_exp'_sequential.
+  apply sequential_nodup in H; auto.
+  apply nodup_rev; auto.
+Qed.
+
+Lemma in_tuple_helper: forall {A B:Type}(l: list (prod A B)) n x,
+In (n,x) l -> In n (map fst l).
+Proof. induction l; crush. assert (In n (map fst l)). apply IHl with (x:=x).
+  auto. auto.
+Qed.
+Lemma map_rev_commute: forall {A B:Type}(l: list (prod A B)), map fst (rev l) = rev (map fst l).
+Proof.  induction l; crush.
+  rewrite map_app. crush. 
+Qed.
+
+Lemma flatten_exp_index_cmp: forall e index x,
+In x (map fst (fst (flatten_exp index e))) -> index <= x.
+Proof.
+  intros. rewrite flatten_exp_exp' in H.
+  rewrite map_rev_commute in H.
+  apply in_rev in H.
+  remember  (map fst (fst (flatten_exp' index e))) as l.
+  destruct l. contradict H.
+  assert (is_sequential (n::l)) by (rewrite Heql; apply 
+flatten_exp'_sequential).
+  apply first_is_index in Heql. subst. 
+  apply (first_smallest_sequential (l)); auto.
+Qed.
   
+ Lemma index_lt_next_index:  forall e index,
+ index < (next_index index (fst (flatten_exp index e))).
+  Proof. intros.
+  unfold next_index.
+  remember ( (fst (flatten_exp index e))) as l.
+  destruct l. auto. destruct p.
+  
+  assert (In n (map fst (fst (flatten_exp index e)))).
+  apply in_tuple_helper with (x:=f). rewrite <- Heql. 
+  apply in_eq.
+  apply flatten_exp_index_cmp in H. omega.
+Qed.
+  
+Lemma last_helper: forall {A:Type} (l:list A) d, ~(l=[])->
+   In (last l d) l.
+   induction l. intros. congruence.
+   intros. 
+   destruct l. compute; auto. rewrite last_drop_head.
+   assert (In (last (a0 :: l) d) (a0 :: l)). apply IHl. 
+   crush.
+   crush. Qed.
+
+
+Lemma helper: forall l a,  (*change this horrible name*)
+   In (System a) (map (fun x: nat=>System x) l)->
+   In a l. induction l; crush. Qed.
+
+Print next_index.
+
+
+Lemma last_in_seq: forall len  start  d,
+len > 0 -> last (seq start len) d = start+len-1.
+Proof.
+  induction len; crush.
+  remember (seq (S start) len) as l.
+  destruct l. unfold seq in Heql. destruct len. omega. congruence.  
+  rewrite Heql. replace (start + S len - 1) with (S start + len - 1) by omega.
+  apply IHlen. destruct len. unfold seq in Heql; congruence. omega.
+Qed.
+
+
+Lemma last_rev_is_first: forall {A:Type} (l:list A) n a l' d, 
+rev (a::l) = n::l' ->
+n =last  (a::l) d .
+Proof. induction l; crush. destruct l; auto.
+  crush. eapply IHl.
+  assert (l'<>[]).
+  unfold not; intro. subst. destruct (rev (a1::l)).
+  crush. rewrite <- app_comm_cons  in H. 
+  destruct l0; crush.
+  apply app_removelast_last with (d:=d) in H0.
+  rewrite H0 in H.
+  replace ( rev (a1 :: l) ++ [a; a0] ) with
+   ( (rev (a1::l) ++[a])++[a0]) in H.
+  replace (n :: removelast l' ++ [last l' d])
+  with ((n :: removelast l') ++ [last l' d]) in H.
+ apply app_inj_tail in H. destruct H. apply H.
+  apply app_comm_cons.
+  rewrite <- app_assoc. auto.
+Qed.
+
+Lemma next_index_bigger : forall e index x,
+In x (map fst (fst (flatten_exp index e) )) -> x <
+next_index index (fst (flatten_exp index e)).
+Proof.
+  intros. rewrite flatten_exp_exp' in H .
+  rewrite map_rev_commute in H.
+  rewrite <- in_rev in H.
+  unfold next_index. rewrite flatten_exp_exp'.
+  assert (is_sequential (map fst (fst (flatten_exp' index e)))) by
+  apply flatten_exp'_sequential.
+  remember ( fst (flatten_exp' index e) )as l.
+  destruct l. contradict H. 
+  destruct (rev (p:: l)) eqn: Q. 
+  replace  (rev (p::l)) with (rev l ++[p]) in Q by auto.	 symmetry in Q.
+  apply app_cons_not_nil in Q. exfalso; auto.
+  destruct p0.
+  assert (map fst (rev (p::l)) = map fst ((n,f)::l0)) by (rewrite Q; auto).
+  rewrite map_rev_commute in H1. 
+  replace (map fst (p::l)) with ((fst p)::(map fst l)) in * by auto.
+  apply sequential_is_seq in H0.
+  replace (map fst ((n ,f)::l0)) with (n::(map fst l0)) in H1 by auto.
+  assert (n = last (fst p :: map fst l) 0).
+  eapply last_rev_is_first. apply H1.
+  rewrite H2. rewrite <- H0.
+  rewrite <- H0 in H. apply in_seq in H. rewrite last_in_seq.
+  omega. omega.
+Qed.
+
+Ltac uvstac := match goal with
+  | [H: In ?a (?l1 ++ ?l2) |- _] => apply in_app_or in H; destruct H
+  | [H: In ?b (?a::?l) |- _] => apply in_inv in H; destruct H
+  | [H: context[?l++[]] |- _] => rewrite app_nil_r in H
+  end.
+
+Lemma flatten'_index_increase: forall c x index, 
+  
+  In (System x) (collect_declared_vars_flatcom (snd (flatten' index c)))
+  -> index <= x.
+
+Proof. induction c; mycrush.
+- rewrite collect_declare_everything in H. 
+  unfold collect_declared_vars_flatcom in H. 
+  uvstac. 
+  
+    
+    assert (In x  (map fst (fst (flatten_exp index e))))
+   by (apply helper; auto). apply flatten_exp_index_cmp with (e:=e); auto. contradict H.
+- rewrite collect_declare_everything in H. 
+  unfold collect_declared_vars_flatcom in H.
+  fold collect_declared_vars_flatcom in H.
+  uvstac.
+    
+    assert (In x  (map fst (fst (flatten_exp index e))))
+   by (apply helper; auto). apply flatten_exp_index_cmp with (e:=e); auto.
+   crush. apply IHc in H0; auto; auto. 
+  assert (index < (next_index index (fst (flatten_exp index e)))).
+  apply index_lt_next_index. omega.
+  
+- rewrite collect_declare_everything in H. uvstac.
+   assert (In x  (map fst (fst (flatten_exp index e))))
+   by (apply helper; auto). apply flatten_exp_index_cmp with (e:=e); auto.
+     unfold collect_declared_vars_flatcom in H.
+  fold collect_declared_vars_flatcom in H. contradict H.
+- repeat rewrite collect_declare_everything in H. 
+   uvstac. 
+
+   assert (In x   (
+         (map fst
+            (fst
+               (flatten_exp
+                  (next_index index (fst (flatten_exp index e0))) e)))))
+   by (apply helper; auto).
+  
+ apply flatten_exp_index_cmp with (e:=e) in H0; auto.
+ 
+  Lemma next_index_gt_index: forall e index,
+index < next_index index (fst (flatten_exp index e)).
+   Proof. intros. unfold next_index.
+  destruct (fst (flatten_exp index e)) eqn: Q. auto.
+  destruct p.
+  unfold flatten_exp in Q; destruct_things; subst; simpl.
+  unfold fst in Q.
+  destruct_things ; subst; simpl.
+  destruct (fst (flatten_exp' index e)) eqn:P.
+  symmetry in P. apply flatten_exp'_never_empty in P. exfalso; auto.
+  
+
+  assert (map fst (rev (fst (flatten_exp' index e))) = n:: (map fst l)) by crush.
+  rewrite map_rev_commute in H.
+  assert (In n (rev (map fst (fst (flatten_exp' index e))))) by crush.
+  rewrite <- in_rev in H0.
+  assert (is_sequential (map fst (fst (flatten_exp' index e))))
+  by (apply flatten_exp'_sequential).
+  Check sequential_is_seq. Check first_is_index.
+   destruct (map fst (fst (flatten_exp' index e))) eqn:QQ.
+  contradict H0. symmetry in QQ.
+  apply first_is_index in QQ.
+  apply first_smallest_sequential with(x:=n) in H1. subst. omega. auto.
+Qed.
+  assert (index < next_index index (fst (flatten_exp index e0)))
+  by (apply next_index_gt_index). omega.
+  
+uvstac.    assert (In x  (map fst (fst (flatten_exp index e0))))
+   by (apply helper; auto). apply flatten_exp_index_cmp with (e:=e0); auto.
+  unfold collect_declared_vars_flatcom in H. contradict H.
+
+ 
+- rewrite collect_declare_everything in H.  uvstac.
+   assert (In x  (map fst (fst (flatten_exp index e))))
+   by (apply helper; auto). apply flatten_exp_index_cmp with (e:=e); auto.
+   unfold collect_declared_vars_flatcom in H. contradict H.
+-  rewrite collect_declare_everything in H.
+   apply in_app_or in H. destruct H.
+   assert (In x  (map fst (fst (flatten_exp index e))))
+   by (apply helper; auto). apply flatten_exp_index_cmp with (e:=e); auto.
+   unfold collect_declared_vars_flatcom in H. contradict H.
+Qed.
+
+
+Lemma user_not_in_system: forall l x, In (User x) 
+ (map (fun x : nat => System x) l) -> False.
+Proof. induction l; crush. apply IHl in H0. auto. Qed.
+Lemma user_var_same: forall c index x,
+In (User x) (collect_declared_vars_flatcom (snd (flatten' index c)))
+-> In x (collect_declared_vars_com c).
+Proof. 
+Hint Resolve user_not_in_system.
+   induction c; mycrush; (try rewrite collect_declare_everything in *).
+   - uvstac. eauto.
+unfold collect_declared_vars_flatcom in H.  auto.
+   - uvstac.
+     + apply user_not_in_system in H; auto; exfalso; auto.
+     +   unfold collect_declared_vars_flatcom in H.
+     fold collect_declared_vars_flatcom in H.
+     uvstac.
+       * crush.
+       * apply IHc in H. auto.
+   - uvstac.
+     + eauto. 
+     + unfold collect_declared_vars_flatcom in H. auto.
+   - uvstac.
+     + eauto.
+     + rewrite collect_declare_everything in H.
+     unfold collect_declared_vars_flatcom in H. uvstac. 
+     eauto. auto.
+  - uvstac. eauto. unfold collect_declared_vars_flatcom in H. auto.
+  - uvstac. eauto. unfold collect_declared_vars_flatcom in H. auto.
+Qed.
+     
+
+  
+
 
 Lemma flatten_unique : forall (c : com)(index:nat), (unique_decl_com c) -> unique_decl_flat (snd (flatten' index c)).
 Hint Constructors NoDup.
+Hint Resolve nodup_flatten_exp.
 Proof. induction c; mycrush; try (unfold unique_decl_flat; mycrush; tauto). 
   - apply declare_everything_unique.
-    + admit. (*follows from sequential*)
+    + auto. (*follows from sequential*)
     + unfold unique_decl_flat.
       unfold collect_declared_vars_flatcom. auto .
     + unfold collect_declared_vars_flatcom. intros. auto.
   -  
     apply declare_everything_unique.
-    + admit.
+    + auto.
     + unfold unique_decl_flat. unfold collect_declared_vars_flatcom.
     fold collect_declared_vars_flatcom. 
     unfold unique_decl_com in H. 
     unfold flatten in IHc. unfold unique_decl_com in IHc.
-    (*need: user variables are the same before and after flatten*)
-    admit.
+    unfold unique_decl_flat in IHc.
+    unfold collect_declared_vars_com in H.
+    fold collect_declared_vars_com in H.
+    rewrite NoDup_cons_iff in *. destruct H. apply IHc with (index:=(next_index index (fst (flatten_exp index e)))) in H0.
+    split. Focus 2. auto.
+     unfold not; intro.
+     apply user_var_same in H1. auto.
+    
   +
   unfold collect_declared_vars_flatcom.
   fold collect_declared_vars_flatcom.
   intros. unfold not. intro H2. destruct H2. congruence.
-  apply flatten'_index_increase in H1.
-  (*flatten_exp property*) admit. 
+  
+  apply flatten'_index_increase in H1. 
+   apply next_index_bigger in H0. omega.
+    
+  (*flatten_exp property*) 
   - apply declare_everything_unique.
-    + admit.
+    + auto.
     + unfold unique_decl_flat.
       unfold collect_declared_vars_flatcom. auto.
     + unfold  collect_declared_vars_flatcom. intros. auto.
   - apply declare_everything_unique.
-    + admit.
+    + auto.
     + apply declare_everything_unique.
-      * admit.
+      * auto.
       * unfold unique_decl_flat.
         unfold collect_declared_vars_flatcom. auto.
       * unfold  collect_declared_vars_flatcom. intros. auto.
     + unfold collect_declared_vars_flatcom.
   fold collect_declared_vars_flatcom.
-  intros. unfold not. intro. rewrite collect_declare_everything in H1. admit. (*need statement about flatten_exp*)
+  intros. unfold not. intro. rewrite collect_declare_everything in H1. 
+  uvstac. apply helper in H1.
+  apply flatten_exp_index_cmp in H0.
+  apply next_index_bigger in H1. omega.
+ unfold collect_declared_vars_flatcom in H1. auto.
   - apply declare_everything_unique.
-    + admit.
+    + auto.
     + unfold unique_decl_flat.
       unfold collect_declared_vars_flatcom. auto.
     +  unfold  collect_declared_vars_flatcom. intros. auto.
   - apply declare_everything_unique.
-    + admit.
+    + auto.
     + unfold unique_decl_flat.
       unfold collect_declared_vars_flatcom. auto.
     + unfold  collect_declared_vars_flatcom. intros. auto.
-Admitted.
+
+Qed.
 
 
 Fixpoint eval_flat_exp (e:flat_exp) (s:state) : answer := 
