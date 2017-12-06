@@ -663,24 +663,26 @@ Lemma destruct_system_bound_in': forall f (l1 : list (nat * flat_exp)) (hd : nat
   intros. rewrite <- destruct_system_bound_in. apply andb_true_iff in H. destruct H; rewrite H; rewrite H0; tauto.
 Qed. 
 
-Ltac and_identity := repeat match goal with
+Ltac bool_identity := repeat match goal with
                               | [|- context [true && ?e] ] => replace (true && e) with e by crush
-                              | [|- context [?e && true] ] => replace (e && true) with (true && e) by (rewrite andb_comm; tauto)
+                              | [|- context [?e && true] ] => replace (e && true) with (e) by (rewrite andb_comm; crush; tauto)
+                              | [|- context [false || ?e] ] => replace (false || e) with e by crush
+                              | [|- context [?e || false] ] => replace (e || false) with (e) by (rewrite orb_comm; crush; tauto)
+                              | [|- context [false && ?e] ] => replace (true && e) with false by crush
+                              | [|- context [?e && false] ] => replace (e && false) with (false) by (rewrite andb_comm; crush; tauto)
+                              | [|- context [true || ?e] ] => replace (true || e) with true by crush
+                              | [|- context [?e || true] ] => replace (e || true) with (true) by (rewrite orb_comm; crush; tauto)
                             end.
 
-Lemma destruct_bound_system_exp: forall e hd l1, (bound_system_exp e [hd] || bound_system_exp e l1) = (bound_system_exp e (hd :: l1)).
-  induction e; try (intros; simpl; tauto);
-  try (unfold bound_system_exp; intros; specialize (destruct_system_bound_in f l1 hd); crush; tauto).
-  - intros. unfold bound_system_exp. repeat rewrite demorgan4. repeat rewrite demorgan3. repeat rewrite destruct_system_bound_in.
-    remember_destruct (system_bound_in f (hd :: l1)) f' f'eq; try (auto; tauto). remember_destruct (system_bound_in f0 (hd :: l1)) f0' f0'eq; try (auto; tauto).
-    + and_identity. repeat rewrite demorgan2. repeat rewrite demorgan1.
-      remember_destruct' (system_bound_in f [hd] && system_bound_in f l1).
-      replace (system_bound_in f0 l1 && system_bound_in f0 [hd]) with (system_bound_in f0 [hd] && system_bound_in f0 l1 ) by (rewrite andb_comm; tauto). 
-      remember_destruct' (system_bound_in f0 [hd] && system_bound_in f0 l1). repeat rewrite orb_true_l. repeat rewrite orb_true_r. tauto.
-      repeat rewrite orb_true_r. repeat rewrite orb_true_l. tauto.
-      repeat rewrite orb_false_r. repeat rewrite orb_false_l. remember_destruct' (system_bound_in f l1). repeat rewrite andb_true_r in Heqtmpname.
-      rewrite <- Heqtmpname. rewrite andb_false_l. rewrite orb_false_l. rewrite andb_true_r. rewrite orb_comm. rewrite absorption_orb. admit. 
-      tauto. 
+Lemma induct_bound_system_exp: forall e hd l1, ((bound_system_exp e l1) = true) -> ((bound_system_exp e (hd :: l1)) = true).
+  induction e; intros; try (simpl; tauto);
+  try (specialize (destruct_system_bound_in f l1 hd); crush; tauto);
+  intros; unfold bound_system_exp; unfold bound_system_exp in H; 
+  try (rewrite <- destruct_system_bound_in; rewrite H; rewrite orb_true_r; tauto).
+  - symmetry in H. apply andb_true_eq in H. destruct H. rewrite <- destruct_system_bound_in. rewrite andb_comm. rewrite <- destruct_system_bound_in.
+    rewrite <- H. rewrite <- H0. bool_identity. tauto.
+Qed.
+
 
 Lemma list_sizes_match' : forall {A: Type} (l hd tl : A) (mid : list A), [l] = hd :: mid ++ [tl] -> False.
   induction mid; crush.
