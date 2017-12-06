@@ -698,10 +698,10 @@ Lemma empty_lists : forall {A : Type} (pre post : list A) (lft mid : A), ([lft] 
   induction pre; crush.
 Qed.
 
-Lemma empty_rev : forall {A : Type} (l : list A) , ([] = rev l) -> ([] = l).
-  intros. destruct l.
+Lemma empty_rev : forall {A : Type} (l : list A) , ([] = rev l) <-> ([] = l).
+  split; try (crush; tauto). destruct l.
   - tauto.
-  - simpl in H. apply mid_cons_nonempty in H. exfalso; tauto.
+  - intros. simpl in H. apply mid_cons_nonempty in H. exfalso; tauto.
 Qed.
 
 Lemma flatten_exp_exp'_relate : forall index e, (rev (fst (flatten_exp' index e)) = fst (flatten_exp index e)).
