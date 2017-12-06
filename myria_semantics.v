@@ -658,6 +658,27 @@ Lemma destruct_system_bound_in: forall f (l1 : list (nat * flat_exp)) (hd : nat 
     * intros. simpl. remember_destruct hd hd' hd'eq. remember_destruct a a' a'eq. remember_destruct' (n =? n0); tauto.
 Qed.
 
+Lemma system_bound_in_user_tautology : forall n (l : list (nat * flat_exp)), ((system_bound_in (User n) l) = true).
+  induction l; crush.
+Qed.
+
+Lemma system_bound_in_reorder : forall v l hd, (system_bound_in v (hd :: l) = system_bound_in v (l ++ [hd])).
+  destruct v.
+  - intros. repeat rewrite system_bound_in_user_tautology. tauto.
+  - induction l.
+    * crush; tauto.
+    * intros. simpl. crush. remember_destruct' (n =? a); remember_destruct' (n =? a0).
+    + tauto.
+    + simpl. specialize (IHl (a,b0)). simpl in IHl. rewrite <- Heqtmpname in IHl. crush.
+    + simpl. tauto.
+    + simpl. specialize (IHl (a,b0)). simpl in IHl. rewrite <- Heqtmpname in IHl. simpl in IHl. crush. 
+Qed.
+
+Lemma destruct_system_bound_in_rev: forall f (l1 : list (nat * flat_exp)) (tl : nat * flat_exp),
+                                  system_bound_in f [tl] || system_bound_in f l1 = system_bound_in f (l1 ++ [tl]).
+  intros. rewrite <- system_bound_in_reorder. apply destruct_system_bound_in. 
+Qed.
+
 Lemma destruct_system_bound_in': forall f (l1 : list (nat * flat_exp)) (hd : nat * flat_exp),
                                   (system_bound_in f [hd] && system_bound_in f l1 = true ) -> (system_bound_in f (hd :: l1) = true).
   intros. rewrite <- destruct_system_bound_in. apply andb_true_iff in H. destruct H; rewrite H; rewrite H0; tauto.
@@ -707,10 +728,33 @@ Qed.
 Lemma flatten_exp_exp'_relate : forall index e, (rev (fst (flatten_exp' index e)) = fst (flatten_exp index e)).
   intros. unfold flatten_exp. mycrush. Qed.
 
-Lemma flatten_system_exp_all_bound : forall e interim l1 l2 index, (fst((flatten_exp index e)) = (l1 ++ interim ::l2)) ->  ((bound_system_exp (snd interim) l1) = true).
-  specialize (@empty_lists (nat * flat_exp) ).
-  specialize (@mid_cons_nonempty (nat * flat_exp) ).
-  specialize (@list_sizes_match' (nat * flat_exp)).
+Lemma forall_to_fun : forall {A : Type} (e : A) (b : Prop), ((fun (e' : A) => b) e) -> b.
+  crush.
+Qed.
+
+Lemma rev_injective : forall {A : Type} (l1 l2 : list A), (rev l1 = rev l2) -> (l1 = l2).
+  induction l1; induction l2.
+  - tauto.
+  - intros. simpl in H. apply mid_cons_nonempty in H. exfalso; tauto.
+  - intros. simpl in H. symmetry in H. apply mid_cons_nonempty in H. exfalso; tauto.
+  - crush. apply app_inj_tail in H. destruct H. apply IHl1 in H. crush. 
+Qed.
+
+Ltac list_head_equal := match goal with | [H : ?hd::?tl = ?hd'::?tl' |- _] => assert (hd = hd') by crush; assert (tl = tl') by crush end.
+
+Lemma rev_injective' : forall {A : Type} (l1 l2 : list A),  (l1 = l2) -> (rev l1 = rev l2).
+  induction l1; induction l2.
+  - tauto.
+  - intros. apply (mid_cons_nonempty []) in H. exfalso; tauto.
+  - intros. symmetry in H. apply (mid_cons_nonempty []) in H. exfalso; tauto.
+  - intros. list_head_equal. subst. tauto.
+Qed.
+
+Lemma rev_ctor : forall {A : Type} (l1 l2 : list A),  (l1 = l2) <-> (rev l1 = rev l2).
+  split. apply rev_injective'; tauto. apply rev_injective; tauto.
+Qed.
+
+Lemma flatten_system_exp_all_bound' : forall e l1 l2 interim index, (fst((flatten_exp index e)) = (l1 ++ interim ::l2)) ->  ((bound_system_exp (snd interim) l1) = true).
   Ltac empty_lists := match goal with
                         | [H : [?a] = ?l1 ++ ?e :: ?l2 |- _] =>
                           assert (l1 = []) by (induction l1; crush); subst;
@@ -731,25 +775,80 @@ Lemma flatten_system_exp_all_bound : forall e interim l1 l2 index, (fst((flatten
   Ltac split_context_pair := match goal with
                                | [H : (?a,?b) = (?a',?b') |- _] => assert (a = a') by crush; assert (b = b') by crush; clear H
                              end.
-  Ltac list_head_equal := match goal with | [H : ?hd::?tl = ?hd'::?tl' |- _] => assert (hd = hd') by crush; assert (tl = tl') by crush end.
   Ltac clear_reflexives := match goal with | [H : ?e = ?e |- _] => clear H end.
   Ltac generalize4 b a index l2 := generalize dependent b; generalize dependent a; generalize dependent index; generalize dependent l2.
-  induction e; mycrush;
-  (*trivial case*) try (empty_lists; split_context_pair; crush; tauto).
-  - admit.
-  - generalize4 b a index l2.  induction l1.
-    * intros. simpl in H2. remember_destruct (rev (fst (flatten_exp' (S index) e))) l2' l2'def.
-      + repeat empty_lists. empty_flatten.
-      + simpl in H2. list_head_equal. subst. clear_reflexives. specialize (IHe (a,b) [] l2' (S index) ). simpl in IHe.
-      rewrite flatten_exp_exp'_relate in l2'def. symmetry in l2'def. apply IHe in l2'def. tauto.
-    * intros. remember_destruct (rev (fst (flatten_exp' (S index) e))) l2' l2'def.
-      + repeat empty_lists. empty_flatten.
-      + simpl in H2. list_head_equal. subst. apply induct_bound_system_exp. clear H. clear H0. clear H1. 
-        reassociate_list_in. rewrite l2'def in H2. symmetry in l2'def.
-        rewrite flatten_exp_exp'_relate in l2'def. assert (bound_system_exp (snd a) [] = true) by (apply (IHe a [] l2' (S index)) in l2'def; tauto).
-        
-        
-  - admit. (*looks like above*)
+  Ltac lift_into_rev := match goal with | [H : context [rev ?a ++ [?b]] |- _] => replace (rev a ++ [b]) with (rev (b::a)) in H by crush end.
+  
+  specialize (@empty_lists (nat * flat_exp) ).
+  specialize (@mid_cons_nonempty (nat * flat_exp) ).
+  specialize (@list_sizes_match' (nat * flat_exp)).  
+  induction e; 
+  (*trivial case*) try (mycrush; empty_lists; split_context_pair; crush; tauto).
+  - admit. (*binop.  I shudder at the sight*)
+  - apply (@rev_ind (nat * flat_exp) (fun l1 => forall (l2 : list (nat * flat_exp)) (interim : nat * flat_exp) (index : nat),
+                                                  fst (flatten_exp index (Not e)) = l1 ++ interim :: l2 ->
+                                                  bound_system_exp (snd interim) l1 = true )).
+    * intros. mycrush. lift_into_rev.
+      symmetry in H2. replace (interim :: l2) with (rev (rev (interim :: l2))) in H2 by (rewrite rev_involutive; tauto).
+      apply rev_injective in H2. simpl in H2. generalize dependent l2.
+      apply (@rev_ind (nat * flat_exp) (fun l2 => rev l2 ++ [interim] =
+                                                  (index, Flat_Not (System (snd (flatten_exp' (S index) e))))
+                                                    :: fst (flatten_exp' (S index) e) ->
+                                                  bound_system_exp (snd interim) [] = true)). mycrush. empty_flatten; tauto.
+      intros. replace (rev (l ++ [x])) with (x :: (rev l)) in H3 by (rewrite rev_unit; tauto). reassociate_list_in.
+      list_head_equal. lift_into_rev. apply rev_injective' in H5.
+      rewrite flatten_exp_exp'_relate in H5. rewrite rev_involutive in H5.  symmetry in H5. apply (IHe [] l interim (S index)). crush; tauto.
+    * intros interim' l1 IHl1. apply (@rev_ind (nat * flat_exp) (fun l2 => forall (interim : nat * flat_exp)
+                                                                                  (index : nat),
+                                                                             fst (flatten_exp index (Not e)) = (l1 ++ [interim']) ++ interim :: l2 ->
+                                                                             bound_system_exp (snd interim) (l1 ++ [interim']) = true)).
+    + mycrush. lift_into_rev. apply rev_injective' in H2. rewrite rev_involutive in H2. rewrite rev_app_distr in H2. simpl in H2.
+      list_head_equal. split_context_pair. symmetry in H5. subst.
+      apply rev_injective' in H4. rewrite flatten_exp_exp'_relate in H4. simpl in H4. rewrite rev_involutive in H4.
+      apply IHe in H4. simpl in H4. list_head_equal. clear_reflexives. clear H2. simpl. rewrite <- destruct_system_bound_in_rev. simpl.
+      rewrite orb_false_r. rewrite flatten_exp'_returns_right_nat. rewrite H5. simpl. apply orb_true_intro. left. symmetry. apply beq_nat_refl.
+    + intros. apply rev_injective' in H3. rewrite rev_app_distr in H3. rewrite rev_unit in H3. reassociate_list_in. rewrite rev_app_distr in H3.
+      replace (rev [x]) with [x] in H3 by auto.  replace ([x] ++ rev (interim :: l)) with (x :: rev (interim :: l)) in H3 by crush. reassociate_list_in.
+      rewrite <- flatten_exp_exp'_relate in H3. rewrite rev_involutive in H3. simpl in H3. remember_destruct' (flatten_exp' (S index) e).
+      clear_context_pairs. subst. list_head_equal. subst. clear H3.
+      replace ((rev l ++ [interim]) ++ interim' :: rev l1)
+      with (rev l ++ interim :: interim' :: rev l1) in H5 by crush. apply rev_injective' in H5. rewrite flatten_exp_exp'_relate in H5.
+      rewrite rev_app_distr in H5. simpl in H5. repeat rewrite rev_involutive in H5.
+      replace (((l1 ++ [interim']) ++ [interim]) ++ l) with ((l1 ++ [interim']) ++ interim :: l) in H5 by crush.
+      specialize (IHe (l1 ++ [interim']) l interim (S index)).
+      apply IHe in H5. tauto. 
+  - apply (@rev_ind (nat * flat_exp) (fun l1 => forall (l2 : list (nat * flat_exp)) (interim : nat * flat_exp) (index : nat),
+                                                  fst (flatten_exp index (Deref e)) = l1 ++ interim :: l2 ->
+                                                  bound_system_exp (snd interim) l1 = true )).
+    * intros. mycrush. lift_into_rev.
+      symmetry in H2. replace (interim :: l2) with (rev (rev (interim :: l2))) in H2 by (rewrite rev_involutive; tauto).
+      apply rev_injective in H2. simpl in H2. generalize dependent l2.
+      apply (@rev_ind (nat * flat_exp) (fun l2 => rev l2 ++ [interim] =
+                                                  (index, Flat_Deref (System (snd (flatten_exp' (S index) e))))
+                                                    :: fst (flatten_exp' (S index) e) ->
+                                                  bound_system_exp (snd interim) [] = true)). mycrush. empty_flatten; tauto.
+      intros. replace (rev (l ++ [x])) with (x :: (rev l)) in H3 by (rewrite rev_unit; tauto). reassociate_list_in.
+      list_head_equal. lift_into_rev. apply rev_injective' in H5.
+      rewrite flatten_exp_exp'_relate in H5. rewrite rev_involutive in H5.  symmetry in H5. apply (IHe [] l interim (S index)). crush; tauto.
+    * intros interim' l1 IHl1. apply (@rev_ind (nat * flat_exp) (fun l2 => forall (interim : nat * flat_exp)
+                                                                                  (index : nat),
+                                                                             fst (flatten_exp index (Deref e)) = (l1 ++ [interim']) ++ interim :: l2 ->
+                                                                             bound_system_exp (snd interim) (l1 ++ [interim']) = true)).
+    + mycrush. lift_into_rev. apply rev_injective' in H2. rewrite rev_involutive in H2. rewrite rev_app_distr in H2. simpl in H2.
+      list_head_equal. split_context_pair. symmetry in H5. subst.
+      apply rev_injective' in H4. rewrite flatten_exp_exp'_relate in H4. simpl in H4. rewrite rev_involutive in H4.
+      apply IHe in H4. simpl in H4. list_head_equal. clear_reflexives. clear H2. simpl. rewrite <- destruct_system_bound_in_rev. simpl.
+      rewrite orb_false_r. rewrite flatten_exp'_returns_right_nat. rewrite H5. simpl. apply orb_true_intro. left. symmetry. apply beq_nat_refl.
+    + intros. apply rev_injective' in H3. rewrite rev_app_distr in H3. rewrite rev_unit in H3. reassociate_list_in. rewrite rev_app_distr in H3.
+      replace (rev [x]) with [x] in H3 by auto.  replace ([x] ++ rev (interim :: l)) with (x :: rev (interim :: l)) in H3 by crush. reassociate_list_in.
+      rewrite <- flatten_exp_exp'_relate in H3. rewrite rev_involutive in H3. simpl in H3. remember_destruct' (flatten_exp' (S index) e).
+      clear_context_pairs. subst. list_head_equal. subst. clear H3.
+      replace ((rev l ++ [interim]) ++ interim' :: rev l1)
+      with (rev l ++ interim :: interim' :: rev l1) in H5 by crush. apply rev_injective' in H5. rewrite flatten_exp_exp'_relate in H5.
+      rewrite rev_app_distr in H5. simpl in H5. repeat rewrite rev_involutive in H5.
+      replace (((l1 ++ [interim']) ++ [interim]) ++ l) with ((l1 ++ [interim']) ++ interim :: l) in H5 by crush.
+      specialize (IHe (l1 ++ [interim']) l interim (S index)).
+      apply IHe in H5. tauto. 
 
 Admitted.
 
