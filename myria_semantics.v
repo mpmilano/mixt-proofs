@@ -890,7 +890,7 @@ Lemma flatten_system_exp_all_bound' : forall e l1 l2 interim index, (fst((flatte
       repeat rewrite rev_app_distr. rewrite <- system_bound_in_reorder. apply (system_bound_in_itself [] ).
     * lift_into_rev. repeat make_tail. apply rev_head in H. mycrush.
       repeat rewrite rev_app_distr in H1. repeat rewrite flatten_exp_exp'_relate in H1.
-      apply middle_is_somewhere in H1. destruct H1. destruct H.
+      apply middle_is_somewhere in H1. destruct H1. destruct H. 
     + apply IHe1 in H. crush.
     + apply IHe2 in H. crush.
 Admitted.
