@@ -679,6 +679,12 @@ Lemma system_bound_in_reorder : forall v l hd, (system_bound_in v (hd :: l) = sy
     + simpl. specialize (IHl (a,b0)). simpl in IHl. rewrite <- Heqtmpname in IHl. simpl in IHl. crush. 
 Qed.
 
+Ltac reflexive_nateq_left := apply orb_true_intro; left; symmetry; apply beq_nat_refl. 
+
+Lemma system_bound_in_itself : forall l1 l2 p, system_bound_in (System (fst p)) (l1 ++ p :: l2) = true.
+  induction l1; mycrush; reflexive_nateq_left.
+Qed.
+
 Lemma destruct_system_bound_in_rev: forall f (l1 : list (nat * flat_exp)) (tl : nat * flat_exp),
                                   system_bound_in f [tl] || system_bound_in f l1 = system_bound_in f (l1 ++ [tl]).
   intros. rewrite <- system_bound_in_reorder. apply destruct_system_bound_in. 
@@ -741,8 +747,8 @@ Ltac empty_lists := repeat
                         assert (a = e) by (apply empty_lists in H; tauto); subst;
                         clear H
                       | [H : [?a] = ?e :: ?l2 |- _] =>
-                          assert (l2 = []) by (apply empty_lists in H; tauto); subst;
-                          assert (a = e) by (apply empty_lists in H; tauto); subst;
+                          assert (l2 = []) by (apply (empty_lists []) in H; crush; tauto); subst;
+                          assert (a = e) by (apply (empty_lists []) in H; crush; tauto); subst;
                           clear H
                       | [H : [?a] = ?l1 ++ [?e] |- _] =>
                         assert (l1 = []) by (apply empty_lists in H; tauto); subst;
@@ -826,6 +832,9 @@ Lemma rev_head : forall {A : Type} (hd hd' : A) (tl tl' : list A), (rev (hd :: t
   intros. rewrite revs_swap in H. rewrite rev_unit in H. list_head_equal; crush. rewrite rev_involutive. tauto.
 Qed.
 
+Lemma middle_is_somewhere: forall {A : Type} (l r hd tl : list A) (mid : A), (l ++ r = hd ++ mid :: tl) -> (exists l', l = hd ++ mid::l' \/ r = l' ++ mid::tl).
+  Admitted. 
+
 Lemma flatten_system_exp_all_bound' : forall e l1 l2 interim index, (fst((flatten_exp index e)) = (l1 ++ interim ::l2)) ->  ((bound_system_exp (snd interim) l1) = true).
   Ltac rev_flatten_exp'_extract_head :=
     repeat make_tail;
@@ -855,10 +864,37 @@ Lemma flatten_system_exp_all_bound' : forall e l1 l2 interim index, (fst((flatte
        try (mycrush;
             rewrite <- destruct_system_bound_in_rev;
             rewrite flatten_exp'_returns_right_nat; bool_identity; rewrite <- flatten_exp_exp'_relate in H1; swap_revs H1;
-            rewrite H1; apply orb_true_intro; left; symmetry; apply beq_nat_refl; tauto); tauto).
+            rewrite H1; reflexive_nateq_left; tauto); tauto).
+  - intros. rewrite <- flatten_exp_exp'_relate in H. mycrush. lift_into_rev. 
+    generalize dependent index. generalize dependent interim. generalize dependent l1. 
+    induction l2 using rev_ind; mycrush.
+    * lift_into_rev. apply rev_head in H. mycrush. repeat rewrite flatten_exp'_returns_right_nat.
+      apply andb_true_intro; split.
+    + remember (fst
+                  (flatten_exp'
+                     (next_index' (S a) (map fst (fst (flatten_exp' (S a) e2)))) e1)) as lend. induction lend using rev_ind. list_size_contradiction.
+      repeat rewrite rev_app_distr. crush. remember_destruct' x. mycrush.
+      remember_destruct' (fst
+                            (flatten_exp'
+                               (next_index' (S a) (map fst (fst (flatten_exp' (S a) e2)))) e1)). list_size_contradiction.
+      mycrush. clear IHlend. remember_destruct lend hope hope_eq. (empty_lists; reflexive_nateq_left; tauto).
+      crush. apply orb_true_intro; right. apply system_bound_in_itself. 
+    + remember (rev
+       (fst (flatten_exp' (S a) e2) ++
+        fst
+          (flatten_exp'
+             (next_index' (S a) (map fst (fst (flatten_exp' (S a) e2)))) e1))) as lend. induction lend using rev_ind. 
+      empty_lists; symmetry in Heqlend; apply app_eq_nil in Heqlend; destruct Heqlend; list_size_contradiction; tauto. 
+      repeat rewrite rev_app_distr. crush. remember_destruct' x. mycrush.
+      remember_destruct' (fst (flatten_exp' (S a) e2)). list_size_contradiction. mycrush.
+      repeat rewrite rev_app_distr. rewrite <- system_bound_in_reorder. apply (system_bound_in_itself [] ).
+    * lift_into_rev. repeat make_tail. apply rev_head in H. mycrush.
+      repeat rewrite rev_app_distr in H1. repeat rewrite flatten_exp_exp'_relate in H1.
+      apply middle_is_somewhere in H1. destruct H1. destruct H.
+    + apply IHe1 in H. crush.
+    + apply IHe2 in H. crush.
 Admitted.
-
-
+      
 Definition next_index (index : nat) (l : list (prod nat flat_exp)) :=
   match l with
     | (n,_)::_ => S n
