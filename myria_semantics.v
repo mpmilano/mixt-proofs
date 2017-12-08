@@ -669,6 +669,25 @@ Definition bound_system_exp (e : flat_exp) (l : list (prod nat flat_exp)) : bool
     | Flat_Binop var1 op var2 => ((system_bound_in var1 l) && (system_bound_in var2 l))
   end.
 
+Definition immediate_variables (e : flat_exp) := 
+  match e with
+    | Flat_Const _ => []
+    | Flat_Tt => []
+    | Flat_Ff => []
+    | Flat_Var var => [var]
+    | Flat_Not var => [var]
+    | Flat_Deref var => [var]
+    | Flat_Binop var1 op var2 => [var1;var2]
+  end.
+
+Lemma system_bound_in_is_in : forall v l, ((system_bound_in v l) = true) <-> (In v (map (fun x => System (fst x)) l) ).
+
+  Admitted. 
+
+  Lemma bound_system_exp_in: forall e l, ((bound_system_exp e l) = true) <->
+                                         (forall v, (In v (immediate_variables e)) -> (In v (map (fun x => System (fst x)) l) )).
+    Admitted. 
+
 Lemma destruct_system_bound_in: forall f (l1 : list (nat * flat_exp)) (hd : nat * flat_exp),
                                   system_bound_in f [hd] || system_bound_in f l1 = system_bound_in f (hd :: l1).
   destruct f.
@@ -949,7 +968,8 @@ Lemma unique_split_eq : forall {A : Type} (l r hd tl : list A) (mid : A),
                        NoDup (hd ++ mid :: tl) ->  (l ++ mid :: r = hd ++ mid :: tl) -> ((l = hd) /\ (r = tl)).
   intros.
   assert (Hlen : length (l ++ [mid]) = length (hd ++ [mid])).
-  assert (NoDup (l ++ mid :: r)) as Hndl. rewrite H0. assumption. pose proof (unique_nth_len l r mid) as Hnl. pose proof (unique_nth_len hd tl mid) as Hnr. destruct Hnl as [nl [Hlenl Hnthl]]. destruct Hnr as [nr [Hlenr Hnthr]].
+  assert (NoDup (l ++ mid :: r)) as Hndl. rewrite H0. assumption. pose proof (unique_nth_len l r mid) as Hnl.
+  pose proof (unique_nth_len hd tl mid) as Hnr. destruct Hnl as [nl [Hlenl Hnthl]]. destruct Hnr as [nr [Hlenr Hnthr]].
       assert (nl = nr). rewrite -> NoDup_nth in Hndl. 
       apply Hndl.
       rewrite -> app_length. subst. crush.
@@ -1601,4 +1621,7 @@ Theorem flatten_correct : forall c s,
                                   | None => False
                                 end
                             end.
-Admitted. 
+Admitted.
+
+(* note: we need to change the environments to split user + system variables into their own heaps or else this flatten_correct is impossible*)
+(* note: we need a theorem that says "system variable represents computation".  This is a flatten_exp theorem *)
