@@ -789,6 +789,57 @@ Lemma strong_induct_bound_system_exp: forall e l1 l2, ((bound_system_exp e l1) =
   - replace (l1 ++ x::l2 ++ [(a,b)]) with ((l1 ++ x::l2) ++ [(a,b)]) by crush. rewrite <- bound_system_exp_reorder. apply induct_bound_system_exp; crush.
 Qed.
 
+Fixpoint bound_exp (env : list surface_var) (e : exp) : Prop := 
+match e with 
+| Const _ => True
+| Var v => In v env
+| Binop e1 _ e2 => (bound_exp env e1) /\ (bound_exp env e2)
+| Tt => True
+| Ff => True
+| Not e => (bound_exp env e)
+| Deref e=> (bound_exp env e)
+end.
+
+
+Fixpoint bound_com' (env : list surface_var) c := 
+match c with 
+| Skip => True
+| Return e => (bound_exp env e)
+| Declaration v e c => (bound_exp env e) /\ (bound_com' (v::env) c)
+| Assign_var v e => (In v env) /\ (bound_exp env e)
+| Assign_ptr v e=> (bound_exp env v) /\ (bound_exp env e)
+| Seq c1 c2 => (bound_com' env c1) /\ (bound_com' env c2)
+| If c t e => (bound_exp env c) /\ (bound_com' env t) /\ (bound_com' env e)
+| While c t => (bound_exp env c) /\ (bound_com' env t)
+end.
+
+Definition bound_com c := bound_com' [] c.
+
+Fixpoint bound_flat_exp (env : list flat_var) (e : flat_exp) : Prop := 
+match e with 
+| Flat_Const _ => True 
+| Flat_Var v => In v env
+| Flat_Binop e1 _ e2 => (In e1 env) /\ (In e2 env)
+| Flat_Tt => True
+| Flat_Ff => True
+| Flat_Not e => (In e env)
+| Flat_Deref e => (In e env)
+end.
+
+Fixpoint bound_flat_com' (env : list flat_var) c :=
+  match c with 
+    | Flat_Skip => True 
+    | Flat_Return v => (In v env)
+    | Flat_Declaration v e s => (bound_flat_exp env e) /\ (bound_flat_com' (v::env) s)
+    | Flat_Assign_var v1 v2 => (In v1 env) /\ (In v2 env)
+    | Flat_Assign_ptr v1 v2 => (In v1 env) /\ (In v2 env)
+    | Flat_Seq c1 c2 => (bound_flat_com' env c1) /\ (bound_flat_com' env c2)
+    | Flat_If c t e => (In c env) /\ (bound_flat_com' env t) /\ (bound_flat_com' env e)
+    | Flat_While c t => (In c env) /\ (bound_flat_com' env t)
+  end.
+
+Fixpoint bound_flat_com c := bound_flat_com' [] c.
+
 Lemma list_sizes_match' : forall {A: Type} (l hd tl : A) (mid : list A), [l] = hd :: mid ++ [tl] -> False.
   induction mid; crush.
 Qed.
@@ -972,7 +1023,7 @@ Lemma unique_split_eq : forall {A : Type} (l r hd tl : list A) (mid : A),
   pose proof (unique_nth_len hd tl mid) as Hnr. destruct Hnl as [nl [Hlenl Hnthl]]. destruct Hnr as [nr [Hlenr Hnthr]].
       assert (nl = nr). rewrite -> NoDup_nth in Hndl. 
       apply Hndl.
-      rewrite -> app_length. subst. crush.
+      rewrite -> app_length. crush.
       rewrite -> H0. rewrite -> app_length. subst. crush.
       rewrite Hnthl. rewrite -> H0. rewrite -> Hnthr. reflexivity.
       subst. repeat rewrite -> app_length. rewrite -> H1. reflexivity.
@@ -1399,7 +1450,7 @@ unfold collect_declared_vars_flatcom in H.  auto.
   - uvstac. eauto. unfold collect_declared_vars_flatcom in H. auto.
   - uvstac. eauto. unfold collect_declared_vars_flatcom in H. auto.
 Qed.
-     
+
 Lemma flatten_system_exp_all_bound' : forall e l1 l2 interim index, (fst((flatten_exp index e)) = (l1 ++ interim ::l2)) ->  ((bound_system_exp (snd interim) l1) = true).
   Ltac rev_flatten_exp'_extract_head :=
     repeat make_tail;
@@ -1470,7 +1521,22 @@ Lemma flatten_system_exp_all_bound' : forall e l1 l2 interim index, (fst((flatte
     + apply IHe1 in H. crush.
     + apply IHe2 in H. crush. rewrite bound_system_exp_strong_reorder. apply strong_induct_bound_system_exp. tauto. 
 Qed.
-  
+
+Lemma flatten_bound :  forall c, (bound_com c) -> (bound_flat_com (flatten c)).
+  induction c; crush.
+  unfold flatten. crush. mycrush. 
+Admitted.
+
+Definition lift_env e := map (fun x => User x) e.
+
+Fixpoint used_vars_flat c : (list flat_var) :=
+  match c with
+    | Flat_Skip => []
+    | _ => []
+  end.
+
+Lemma declare_everything_bound : forall c l index1 index2 e, (l = flatten_exp index1 e) -> (All_In (used_vars_flat c) l) ->
+                                                     (bound_flat_com (snd (declare_everything index2 c l)) ).
 
 Lemma flatten_unique : forall (c : com)(index:nat), (unique_decl_com c) -> unique_decl_flat (snd (flatten' index c)).
 Hint Constructors NoDup.
