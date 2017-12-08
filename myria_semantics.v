@@ -719,6 +719,20 @@ Lemma induct_bound_system_exp: forall e hd l1, ((bound_system_exp e l1) = true) 
     rewrite <- H. rewrite <- H0. bool_identity. tauto.
 Qed.
 
+Lemma bound_system_exp_reorder : forall e a l1, (bound_system_exp e (a :: l1)) = (bound_system_exp e (l1 ++ [a])).
+  induction e; try (mycrush; tauto); intros.
+  destruct f; mycrush; try (rewrite system_bound_in_user_tautology; tauto); repeat rewrite <- system_bound_in_reorder; mycrush. 
+Admitted.
+
+Lemma bound_system_exp_strong_reorder : forall e l1 l2, (bound_system_exp e (l1 ++ l2)) = (bound_system_exp e (l2 ++ l1)).
+Admitted.
+  
+
+Lemma strong_induct_bound_system_exp: forall e l1 l2, ((bound_system_exp e l1) = true) -> ((bound_system_exp e (l1 ++ l2)) = true).
+  induction l1 using rev_ind; induction l2 using rev_ind; mycrush.
+  - rewrite <- bound_system_exp_reorder. apply induct_bound_system_exp; crush.
+  - replace (l1 ++ x::l2 ++ [(a,b)]) with ((l1 ++ x::l2) ++ [(a,b)]) by crush. rewrite <- bound_system_exp_reorder. apply induct_bound_system_exp; crush.
+Qed.
 
 Lemma list_sizes_match' : forall {A: Type} (l hd tl : A) (mid : list A), [l] = hd :: mid ++ [tl] -> False.
   induction mid; crush.
@@ -907,27 +921,32 @@ Lemma unique_split_eq : forall {A : Type} (l r hd tl : list A) (mid : A),
 Qed.
   
 
+
+Lemma app_cons_app : forall {A : Type} (l r : list A) (mid : A), l ++ mid :: r = (l ++ [mid]) ++ r.
+  intros. crush.
+Qed.
+
+Lemma firstn_eq : forall {A : Type} (n : nat) (l1 r1 l2 r2: list A) , n <= length l1 -> n <= length l2 -> (firstn n l1) ++ r1 = (firstn n l2) ++ r2 -> (firstn n l1) = (firstn n l2).
+  induction n.
+    reflexivity.
+    intros. destruct l1.
+      inversion H.
+      destruct l2.
+        inversion H0.
+        repeat rewrite -> firstn_cons in *. simpl in H1. inversion H1. subst. rewrite -> (IHn l1 r1 l2 r2); crush.
+Qed.
+
 Lemma middle_is_somewhere: forall {A : Type} (l r hd tl : list A) (mid : A),
-                            (NoDup (l ++ r)) -> (l ++ r = hd ++ mid :: tl) -> (exists l1 l2, (l = hd ++ mid::l1 /\ tl = (l1 ++ l2))
+                            (l ++ r = hd ++ mid :: tl) -> (exists l1 l2, (l = hd ++ mid::l1 /\ tl = (l1 ++ l2))
                                                                                              \/ (r = l2 ++ mid::tl /\ hd = (l1 ++ l2))) .
-  intros. assert (NoDup (hd ++ mid::tl)) by crush. specialize (middle_in_somewhere _ _ _ _ _ H0). intro.
-  specialize (NoDup_remove hd tl mid). intro. specialize (H3 H1). subst. 
-  destruct H2.
-  - apply in_split in H2. destruct H2; destruct H2.
-    assert (hd = x)
-      by (subst;
-          replace ((x ++ mid :: x0) ++ r) with (x ++ mid :: (x0 ++ r)) in H0 by crush; apply unique_split_eq in H0; crush). 
-    crush. assert ((x0 ++r) = tl) by (apply app_inv_head in H0; crush).  crush. exists x0. exists r. crush.
-  - apply in_split in H2. destruct H2; destruct H2. subst.
-    apply rev_injective' in H0.
-      repeat rewrite rev_app_distr in H0. simpl in H0.
-      replace (((rev x0 ++ [mid]) ++ rev x) ++ rev l) with (rev x0 ++ mid::(rev x ++ rev l)) in H0 by crush.
-      replace ((rev tl ++ [mid]) ++ rev hd) with (rev tl ++ mid :: rev hd) in H0 by crush. 
-    assert (tl = x0).
-    + subst. apply unique_split_eq in H0; crush.
-      apply rev_injective in H2; crush. rewrite <- rev_unit. rewrite <- rev_app_distr. apply nodup_rev; crush.
-    + assert (rev x ++ rev l = rev hd) by (subst; apply app_inv_head in H0; crush).
-      rewrite <- rev_app_distr in H4; apply rev_injective in H4. subst. exists l, x. crush.
+  intros.
+  destruct (le_lt_dec (length (hd ++ [mid])) (length l)).
+    exists (skipn (length (hd ++ [mid])) l). exists r. left. assert (Hfn : (hd ++ [mid]) = firstn (length (hd ++ [mid])) (l ++ r)). rewrite -> app_cons_app in H. rewrite -> H. symmetry. apply firstn_app_4. reflexivity. split.
+      rewrite -> app_cons_app. rewrite -> Hfn. rewrite -> firstn_app_3; try assumption. rewrite -> firstn_length_le; try assumption. symmetry. apply firstn_skipn.
+      rewrite -> app_cons_app in H. rewrite -> Hfn in H. rewrite -> firstn_app_3 in H; try assumption. rewrite <- (firstn_skipn (length (hd ++ [mid])) l) in H at 1. symmetry. rewrite <- app_assoc in H. apply app_inv_head in H. assumption.
+    exists l. exists (skipn (length l) hd). right. assert (Hlen : length l <= length hd) by (rewrite -> app_length in l0; crush). rewrite <- (firstn_skipn (length l) hd) in H. rewrite <- (firstn_all l) in H at 1. rewrite <- app_assoc in H. assert (Hfn: firstn (length l) l = firstn (length l) hd). apply firstn_eq with r (skipn (length l) hd ++ mid :: tl); auto. rewrite -> Hfn in H. split. 
+      apply app_inv_head in H. assumption.
+      rewrite -> firstn_all in Hfn. rewrite -> Hfn at 1. symmetry. apply firstn_skipn.
 Qed.
 
       
@@ -1360,23 +1379,6 @@ Lemma flatten_system_exp_all_bound' : forall e l1 l2 interim index, (fst((flatte
             rewrite flatten_exp'_returns_right_nat; bool_identity; rewrite <- flatten_exp_exp'_relate in H1; swap_revs H1;
             rewrite H1; reflexive_nateq_left; tauto); tauto).
   - intros. rewrite <- flatten_exp_exp'_relate in H. mycrush. lift_into_rev.
-    swap_revs H. rewrite rev_app_distr in H. simpl in H. rewrite <- app_assoc in H. simpl in H.
-    reassociate_list_in. apply (middle_is_somewhere _ _ (rev l2) (rev l1) interim) in H.
-    destruct H; destruct H; destruct H; destruct H. 
-    + swap_revs H0. induction l2 using rev_ind; mycrush.
-      * repeat rewrite rev_app_distr. mycrush. repeat rewrite flatten_exp'_returns_right_nat.
-        kill_hd_stupid e2big e2bigeq. mycrush. kill_hd_stupid e2small e2smalleq. mycrush.
-        remember_destruct' p; remember_destruct' p0. assert (n0 = (S index)) by (apply first_is_index' in e2smalleq; crush). subst.
-        assert (n = (next_index' (S index) (fst (S index, f0) :: map fst e2small))) by (apply first_is_index' in e2bigeq; crush). subst.
-        mycrush. rewrite app_assoc. repeat rewrite <- system_bound_in_reorder.
-        apply andb_true_intro; split ; try (apply (system_bound_in_itself' []); tauto). 
-        rewrite <- destruct_system_bound_in.  unfold next_index'. unfold last_index. apply orb_true_intro. right. 
-        
-    + apply rev_injective' in H. rewrite rev_app_distr in H. simpl in H. rewrite rev_involutive in H. rewrite <- app_assoc in H. simpl in H.
-      rewrite flatten_exp_exp'_relate in H. apply IHe1 in H. tauto. 
-
-      (* end retry *)
-      
     generalize dependent index. generalize dependent interim. generalize dependent l1. 
     induction l2 using rev_ind; mycrush.
     * lift_into_rev. apply rev_head in H. mycrush. repeat rewrite flatten_exp'_returns_right_nat.
@@ -1401,10 +1403,10 @@ Lemma flatten_system_exp_all_bound' : forall e l1 l2 interim index, (fst((flatte
       repeat rewrite rev_app_distr. rewrite <- system_bound_in_reorder. apply (system_bound_in_itself [] ).
     * lift_into_rev. repeat make_tail. apply rev_head in H. mycrush.
       repeat rewrite rev_app_distr in H1. repeat rewrite flatten_exp_exp'_relate in H1.
-      apply middle_is_somewhere in H1. destruct H1. destruct H. 
+      apply middle_is_somewhere in H1. destruct H1. destruct H; destruct H; destruct H.  
     + apply IHe1 in H. crush.
-    + apply IHe2 in H. crush.
-Admitted.
+    + apply IHe2 in H. crush. rewrite bound_system_exp_strong_reorder. apply strong_induct_bound_system_exp. tauto. 
+Qed.
   
 
 
