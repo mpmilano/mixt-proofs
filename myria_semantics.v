@@ -685,6 +685,10 @@ Lemma system_bound_in_itself : forall l1 l2 p, system_bound_in (System (fst p)) 
   induction l1; mycrush; reflexive_nateq_left.
 Qed.
 
+Lemma system_bound_in_itself' : forall l1 l2 pl pr, system_bound_in (System pl) (l1 ++ (pl,pr) :: l2) = true.
+  induction l1; mycrush; reflexive_nateq_left.
+Qed.
+
 Lemma destruct_system_bound_in_rev: forall f (l1 : list (nat * flat_exp)) (tl : nat * flat_exp),
                                   system_bound_in f [tl] || system_bound_in f l1 = system_bound_in f (l1 ++ [tl]).
   intros. rewrite <- system_bound_in_reorder. apply destruct_system_bound_in. 
@@ -832,68 +836,100 @@ Lemma rev_head : forall {A : Type} (hd hd' : A) (tl tl' : list A), (rev (hd :: t
   intros. rewrite revs_swap in H. rewrite rev_unit in H. list_head_equal; crush. rewrite rev_involutive. tauto.
 Qed.
 
-Lemma middle_is_somewhere: forall {A : Type} (l r hd tl : list A) (mid : A), (l ++ r = hd ++ mid :: tl) -> (exists l', l = hd ++ mid::l' \/ r = l' ++ mid::tl).
-  Admitted. 
+Lemma middle_in_somewhere: forall {A : Type} (l r l1 l2 : list A) (x : A), l ++ r = l1 ++ x ::l2 -> (In x l \/ In x r).
+  intros. assert (In x (l1 ++ x :: l2)) by crush. rewrite <- H in H0. apply in_app_iff in H0. tauto.
+Qed.
+Hint Constructors NoDup. 
 
-Lemma flatten_system_exp_all_bound' : forall e l1 l2 interim index, (fst((flatten_exp index e)) = (l1 ++ interim ::l2)) ->  ((bound_system_exp (snd interim) l1) = true).
-  Ltac rev_flatten_exp'_extract_head :=
-    repeat make_tail;
-    match goal with
-      | [H : rev (fst (flatten_exp' _ _)) ++ [_] = [_] |- _] => lift_into_rev; apply (rev_head _ _ _ []) in H; crush; list_size_contradiction; tauto
-      | [H : rev (fst (flatten_exp' ?a ?b)) ++ [?hd] = ?tl' ++ [?hd'] |- _] =>
-        lift_into_rev; apply (rev_head hd hd' (fst (flatten_exp' a b)) tl') in H; crush;
-        match goal with
-          | [H : rev (fst (flatten_exp' _ _)) = _ |- _] => rewrite flatten_exp_exp'_relate in H
-        end
-    end.
+ Lemma nodup_app_split : forall {A : Type} (l r : list A), (NoDup (l ++ r)) -> (NoDup l /\ NoDup r).
+Proof. induction l; crush.
+  -
+ rewrite NoDup_cons_iff in *; destruct H; split.
+  +
+  rewrite in_app_iff in H.
+  unfold not in *. intro. apply H. left. auto.
+  + 
+  apply IHl in H0. destruct H0. auto.
+  - rewrite NoDup_cons_iff in H. destruct H. apply IHl in H0. destruct H0; auto.
+Qed.
 
-  Ltac match_flatten_exp'_bound_structure :=
-    match goal with
-      | [H : context [?l1 ++ ?x :: ?y :: ?l2] |- _ ] => replace (l1 ++ x :: y :: l2) with ((l1 ++ [x]) ++ y :: l2) in H by crush
-      | [H : context [?y :: ?l2] |- _ ] => replace (y :: l2) with ([] ++ y :: l2) in H by crush
-    end.
+Lemma nodup_snoc_iff : forall {A : Type} (a : A) (l : list A), NoDup (l ++ [a]) <-> ~ In a l /\ NoDup l.
+Proof. split. 
+  - intro. apply (NoDup_remove l nil a) in H. rewrite app_nil_r in H. tauto.
+  - generalize dependent a.
+  induction l; crush. rewrite NoDup_cons_iff in *. split.
+  + unfold not; intro.
+  apply in_app_or in H0. destruct H0. destruct H1. congruence. simpl in H0. apply H. destruct H0. auto. exfalso; auto.
+  + apply IHl. destruct H1. split. auto. auto. 
+Qed.
   
-  induction e;
-    (*trivial case*) try (mycrush; empty_lists; split_context_pair; subst; auto; tauto);
-  (*single-arg ones*)
-  try (induction l1 using rev_ind; 
-       induction l2 using rev_ind; mycrush; rev_flatten_exp'_extract_head;
-       (* inductive case*)
-       try (match_flatten_exp'_bound_structure; apply IHe in H1; crush; tauto);
-       (* complex base case *)
-       try (mycrush;
-            rewrite <- destruct_system_bound_in_rev;
-            rewrite flatten_exp'_returns_right_nat; bool_identity; rewrite <- flatten_exp_exp'_relate in H1; swap_revs H1;
-            rewrite H1; reflexive_nateq_left; tauto); tauto).
-  - intros. rewrite <- flatten_exp_exp'_relate in H. mycrush. lift_into_rev. 
-    generalize dependent index. generalize dependent interim. generalize dependent l1. 
-    induction l2 using rev_ind; mycrush.
-    * lift_into_rev. apply rev_head in H. mycrush. repeat rewrite flatten_exp'_returns_right_nat.
-      apply andb_true_intro; split.
-    + remember (fst
-                  (flatten_exp'
-                     (next_index' (S a) (map fst (fst (flatten_exp' (S a) e2)))) e1)) as lend. induction lend using rev_ind. list_size_contradiction.
-      repeat rewrite rev_app_distr. crush. remember_destruct' x. mycrush.
-      remember_destruct' (fst
-                            (flatten_exp'
-                               (next_index' (S a) (map fst (fst (flatten_exp' (S a) e2)))) e1)). list_size_contradiction.
-      mycrush. clear IHlend. remember_destruct lend hope hope_eq. (empty_lists; reflexive_nateq_left; tauto).
-      crush. apply orb_true_intro; right. apply system_bound_in_itself. 
-    + remember (rev
-       (fst (flatten_exp' (S a) e2) ++
-        fst
-          (flatten_exp'
-             (next_index' (S a) (map fst (fst (flatten_exp' (S a) e2)))) e1))) as lend. induction lend using rev_ind. 
-      empty_lists; symmetry in Heqlend; apply app_eq_nil in Heqlend; destruct Heqlend; list_size_contradiction; tauto. 
-      repeat rewrite rev_app_distr. crush. remember_destruct' x. mycrush.
-      remember_destruct' (fst (flatten_exp' (S a) e2)). list_size_contradiction. mycrush.
-      repeat rewrite rev_app_distr. rewrite <- system_bound_in_reorder. apply (system_bound_in_itself [] ).
-    * lift_into_rev. repeat make_tail. apply rev_head in H. mycrush.
-      repeat rewrite rev_app_distr in H1. repeat rewrite flatten_exp_exp'_relate in H1.
-      apply middle_is_somewhere in H1. destruct H1. destruct H. 
-    + apply IHe1 in H. crush.
-    + apply IHe2 in H. crush.
-Admitted.
+Lemma nodup_rev : forall {A : Type} (l : list A), NoDup l -> (NoDup (rev l)).
+  induction l using rev_ind; crush. apply nodup_snoc_iff in H. destruct H. apply IHl in H0.
+  rewrite rev_app_distr. crush. apply NoDup_cons_iff. crush. apply in_rev in H1. crush.
+Qed.
+
+Lemma unique_nth_len : forall {A : Type} (hd tl : list A) (mid : A), exists n : nat, (length hd) = n /\ nth n (hd ++ mid :: tl) mid = mid.
+  intros.
+  induction hd; crush. 
+  exists 0. crush.
+  exists (S (length hd)). crush.
+Qed.
+
+
+Lemma firstn_app_3 : forall {A : Type} (n : nat) (l1 l2 : list A), n <= length l1 -> firstn n (l1 ++ l2) = firstn n l1.
+  intros.
+  pose proof (firstn_app n l1 l2) as Hfnapp. rewrite -> Hfnapp. assert ((n - (length l1)) = 0) as Hn0. omega. rewrite -> Hn0. simpl. crush.
+Qed.
+
+Lemma firstn_app_4 :  forall {A : Type} (n : nat) (l1 l2 : list A), n = length l1 -> firstn n (l1 ++ l2) = l1.
+  intros.
+  pose proof (firstn_app_3 n l1 l2). assert (n <= length l1). crush. apply H0 in H1. rewrite -> H1. subst. apply firstn_all.
+Qed.
+
+
+
+Lemma unique_split_eq : forall {A : Type} (l r hd tl : list A) (mid : A),
+                       NoDup (hd ++ mid :: tl) ->  (l ++ mid :: r = hd ++ mid :: tl) -> ((l = hd) /\ (r = tl)).
+  intros.
+  assert (Hlen : length (l ++ [mid]) = length (hd ++ [mid])).
+  assert (NoDup (l ++ mid :: r)) as Hndl. rewrite H0. assumption. pose proof (unique_nth_len l r mid) as Hnl. pose proof (unique_nth_len hd tl mid) as Hnr. destruct Hnl as [nl [Hlenl Hnthl]]. destruct Hnr as [nr [Hlenr Hnthr]].
+      assert (nl = nr). rewrite -> NoDup_nth in Hndl. 
+      apply Hndl.
+      rewrite -> app_length. subst. crush.
+      rewrite -> H0. rewrite -> app_length. subst. crush.
+      rewrite Hnthl. rewrite -> H0. rewrite -> Hnthr. reflexivity.
+      subst. repeat rewrite -> app_length. rewrite -> H1. reflexivity.
+      assert (firstn (length l) (l ++ mid :: r) = l). apply firstn_app_4. reflexivity.
+      assert (firstn (length hd) (hd ++ mid :: tl) = hd). apply firstn_app_4. reflexivity.
+      assert ((length l) = (length hd)) as Hlen' by (repeat rewrite -> app_length in Hlen; crush).
+      rewrite <- Hlen' in H2. rewrite <- H0 in H2. rewrite -> H2 in H1. subst. split; auto.
+      apply app_inv_head in H0. inversion H0. reflexivity.
+Qed.
+  
+
+Lemma middle_is_somewhere: forall {A : Type} (l r hd tl : list A) (mid : A),
+                            (NoDup (l ++ r)) -> (l ++ r = hd ++ mid :: tl) -> (exists l1 l2, (l = hd ++ mid::l1 /\ tl = (l1 ++ l2))
+                                                                                             \/ (r = l2 ++ mid::tl /\ hd = (l1 ++ l2))) .
+  intros. assert (NoDup (hd ++ mid::tl)) by crush. specialize (middle_in_somewhere _ _ _ _ _ H0). intro.
+  specialize (NoDup_remove hd tl mid). intro. specialize (H3 H1). subst. 
+  destruct H2.
+  - apply in_split in H2. destruct H2; destruct H2.
+    assert (hd = x)
+      by (subst;
+          replace ((x ++ mid :: x0) ++ r) with (x ++ mid :: (x0 ++ r)) in H0 by crush; apply unique_split_eq in H0; crush). 
+    crush. assert ((x0 ++r) = tl) by (apply app_inv_head in H0; crush).  crush. exists x0. exists r. crush.
+  - apply in_split in H2. destruct H2; destruct H2. subst.
+    apply rev_injective' in H0.
+      repeat rewrite rev_app_distr in H0. simpl in H0.
+      replace (((rev x0 ++ [mid]) ++ rev x) ++ rev l) with (rev x0 ++ mid::(rev x ++ rev l)) in H0 by crush.
+      replace ((rev tl ++ [mid]) ++ rev hd) with (rev tl ++ mid :: rev hd) in H0 by crush. 
+    assert (tl = x0).
+    + subst. apply unique_split_eq in H0; crush.
+      apply rev_injective in H2; crush. rewrite <- rev_unit. rewrite <- rev_app_distr. apply nodup_rev; crush.
+    + assert (rev x ++ rev l = rev hd) by (subst; apply app_inv_head in H0; crush).
+      rewrite <- rev_app_distr in H4; apply rev_injective in H4. subst. exists l, x. crush.
+Qed.
+
       
 Definition next_index (index : nat) (l : list (prod nat flat_exp)) :=
   match l with
@@ -1037,13 +1073,6 @@ map fst (rev l) = rev (map fst l).
 Proof. induction l; crush. normalize_map. simpl. crush.
 Qed.
 
-Lemma nodup_rev:
-  forall {A:Type} (l: list A) , NoDup l -> NoDup (rev l).
-Proof. induction l using rev_ind;  crush.
-  rewrite rev_unit. apply NoDup_remove in H. 
-  rewrite app_nil_r in H. destruct H.
-  rewrite NoDup_cons_iff. split. rewrite in_rev in H0. auto. crush.
-Qed.
 Lemma nodup_flatten_exp: forall e index,
 NoDup (map fst (fst (flatten_exp index e))).
 Proof. intros.  rewrite flatten_exp_exp'.
@@ -1289,7 +1318,93 @@ unfold collect_declared_vars_flatcom in H.  auto.
   - uvstac. eauto. unfold collect_declared_vars_flatcom in H. auto.
 Qed.
      
+Lemma flatten_system_exp_all_bound' : forall e l1 l2 interim index, (fst((flatten_exp index e)) = (l1 ++ interim ::l2)) ->  ((bound_system_exp (snd interim) l1) = true).
+  Ltac rev_flatten_exp'_extract_head :=
+    repeat make_tail;
+    match goal with
+      | [H : rev (fst (flatten_exp' _ _)) ++ [_] = [_] |- _] => lift_into_rev; apply (rev_head _ _ _ []) in H; crush; list_size_contradiction; tauto
+      | [H : rev (fst (flatten_exp' ?a ?b)) ++ [?hd] = ?tl' ++ [?hd'] |- _] =>
+        lift_into_rev; apply (rev_head hd hd' (fst (flatten_exp' a b)) tl') in H; crush;
+        match goal with
+          | [H : rev (fst (flatten_exp' _ _)) = _ |- _] => rewrite flatten_exp_exp'_relate in H
+        end
+    end.
 
+  Ltac match_flatten_exp'_bound_structure :=
+    match goal with
+      | [H : context [?l1 ++ ?x :: ?y :: ?l2] |- _ ] => replace (l1 ++ x :: y :: l2) with ((l1 ++ [x]) ++ y :: l2) in H by crush
+      | [H : context [?y :: ?l2] |- _ ] => replace (y :: l2) with ([] ++ y :: l2) in H by crush
+    end.
+
+  Ltac kill_hd_stupid name name_eq := match goal with
+                                        | [|- context [hd (stupid _) ?e] ] => remember_destruct e name name_eq;
+                                            [list_size_contradiction; tauto | idtac]
+                                      end.
+
+  Ltac kill_hd_stupid_rev name := match goal with
+                                        | [|- context [hd (stupid _) ?e] ] => remember e as name; 
+                                            induction name using rev_ind; 
+                                            [list_size_contradiction; tauto | idtac]
+                                      end.
+  
+  induction e;
+    (*trivial case*) try (mycrush; empty_lists; split_context_pair; subst; auto; tauto);
+  (*single-arg ones*)
+  try (induction l1 using rev_ind; 
+       induction l2 using rev_ind; mycrush; rev_flatten_exp'_extract_head;
+       (* inductive case*)
+       try (match_flatten_exp'_bound_structure; apply IHe in H1; crush; tauto);
+       (* complex base case *)
+       try (mycrush;
+            rewrite <- destruct_system_bound_in_rev;
+            rewrite flatten_exp'_returns_right_nat; bool_identity; rewrite <- flatten_exp_exp'_relate in H1; swap_revs H1;
+            rewrite H1; reflexive_nateq_left; tauto); tauto).
+  - intros. rewrite <- flatten_exp_exp'_relate in H. mycrush. lift_into_rev.
+    swap_revs H. rewrite rev_app_distr in H. simpl in H. rewrite <- app_assoc in H. simpl in H.
+    reassociate_list_in. apply (middle_is_somewhere _ _ (rev l2) (rev l1) interim) in H.
+    destruct H; destruct H; destruct H; destruct H. 
+    + swap_revs H0. induction l2 using rev_ind; mycrush.
+      * repeat rewrite rev_app_distr. mycrush. repeat rewrite flatten_exp'_returns_right_nat.
+        kill_hd_stupid e2big e2bigeq. mycrush. kill_hd_stupid e2small e2smalleq. mycrush.
+        remember_destruct' p; remember_destruct' p0. assert (n0 = (S index)) by (apply first_is_index' in e2smalleq; crush). subst.
+        assert (n = (next_index' (S index) (fst (S index, f0) :: map fst e2small))) by (apply first_is_index' in e2bigeq; crush). subst.
+        mycrush. rewrite app_assoc. repeat rewrite <- system_bound_in_reorder.
+        apply andb_true_intro; split ; try (apply (system_bound_in_itself' []); tauto). 
+        rewrite <- destruct_system_bound_in.  unfold next_index'. unfold last_index. apply orb_true_intro. right. 
+        
+    + apply rev_injective' in H. rewrite rev_app_distr in H. simpl in H. rewrite rev_involutive in H. rewrite <- app_assoc in H. simpl in H.
+      rewrite flatten_exp_exp'_relate in H. apply IHe1 in H. tauto. 
+
+      (* end retry *)
+      
+    generalize dependent index. generalize dependent interim. generalize dependent l1. 
+    induction l2 using rev_ind; mycrush.
+    * lift_into_rev. apply rev_head in H. mycrush. repeat rewrite flatten_exp'_returns_right_nat.
+      apply andb_true_intro; split.
+    + remember (fst
+                  (flatten_exp'
+                     (next_index' (S a) (map fst (fst (flatten_exp' (S a) e2)))) e1)) as lend. induction lend using rev_ind. list_size_contradiction.
+      repeat rewrite rev_app_distr. crush. remember_destruct' x. mycrush.
+      remember_destruct' (fst
+                            (flatten_exp'
+                               (next_index' (S a) (map fst (fst (flatten_exp' (S a) e2)))) e1)). list_size_contradiction.
+      mycrush. clear IHlend. remember_destruct lend hope hope_eq. (empty_lists; reflexive_nateq_left; tauto).
+      crush. apply orb_true_intro; right. apply system_bound_in_itself. 
+    + remember (rev
+       (fst (flatten_exp' (S a) e2) ++
+        fst
+          (flatten_exp'
+             (next_index' (S a) (map fst (fst (flatten_exp' (S a) e2)))) e1))) as lend. induction lend using rev_ind. 
+      empty_lists; symmetry in Heqlend; apply app_eq_nil in Heqlend; destruct Heqlend; list_size_contradiction; tauto. 
+      repeat rewrite rev_app_distr. crush. remember_destruct' x. mycrush.
+      remember_destruct' (fst (flatten_exp' (S a) e2)). list_size_contradiction. mycrush.
+      repeat rewrite rev_app_distr. rewrite <- system_bound_in_reorder. apply (system_bound_in_itself [] ).
+    * lift_into_rev. repeat make_tail. apply rev_head in H. mycrush.
+      repeat rewrite rev_app_distr in H1. repeat rewrite flatten_exp_exp'_relate in H1.
+      apply middle_is_somewhere in H1. destruct H1. destruct H. 
+    + apply IHe1 in H. crush.
+    + apply IHe2 in H. crush.
+Admitted.
   
 
 
