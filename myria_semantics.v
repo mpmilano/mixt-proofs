@@ -679,6 +679,7 @@ Lemma system_bound_in_reorder : forall v l hd, (system_bound_in v (hd :: l) = sy
     + simpl. specialize (IHl (a,b0)). simpl in IHl. rewrite <- Heqtmpname in IHl. simpl in IHl. crush. 
 Qed.
 
+
 Ltac reflexive_nateq_left := apply orb_true_intro; left; symmetry; apply beq_nat_refl. 
 
 Lemma system_bound_in_itself : forall l1 l2 p, system_bound_in (System (fst p)) (l1 ++ p :: l2) = true.
@@ -708,7 +709,18 @@ Ltac bool_identity := simpl; repeat match goal with
                               | [|- context [?e && false] ] => replace (e && false) with (false) by (rewrite andb_comm; crush; tauto)
                               | [|- context [true || ?e] ] => replace (true || e) with true by crush
                               | [|- context [?e || true] ] => replace (e || true) with (true) by (rewrite orb_comm; crush; tauto)
-                            end.
+                                    end.
+
+Lemma system_bound_in_strong_reorder : forall v l1 l2, (system_bound_in v (l1 ++ l2) = system_bound_in v (l2 ++ l1)).
+  destruct v.
+  - intros. repeat rewrite system_bound_in_user_tautology. tauto.
+  - induction l1; induction l2; mycrush.
+    * destruct a. replace (l2 ++ (n0, f) :: l1) with ((l2 ++ [(n0, f)]) ++ l1) by crush.
+      rewrite <- (IHl1 (l2 ++ [(n0,f)])). rewrite app_assoc. rewrite <- system_bound_in_reorder.
+      rewrite <- destruct_system_bound_in. mycrush. bool_identity. repeat rewrite orb_assoc.
+      replace ((n =? n0) || (n =? a1)) with ((n =? a1) || (n =? n0)). tauto.
+      rewrite orb_comm. tauto.
+Qed.
 
 Lemma induct_bound_system_exp: forall e hd l1, ((bound_system_exp e l1) = true) -> ((bound_system_exp e (hd :: l1)) = true).
   induction e; intros; try (simpl; tauto);
@@ -720,13 +732,22 @@ Lemma induct_bound_system_exp: forall e hd l1, ((bound_system_exp e l1) = true) 
 Qed.
 
 Lemma bound_system_exp_reorder : forall e a l1, (bound_system_exp e (a :: l1)) = (bound_system_exp e (l1 ++ [a])).
-  induction e; try (mycrush; tauto); intros.
-  destruct f; mycrush; try (rewrite system_bound_in_user_tautology; tauto); repeat rewrite <- system_bound_in_reorder; mycrush. 
-Admitted.
-
-Lemma bound_system_exp_strong_reorder : forall e l1 l2, (bound_system_exp e (l1 ++ l2)) = (bound_system_exp e (l2 ++ l1)).
-Admitted.
+  induction e; try (mycrush; tauto); intros;
+  destruct f; mycrush; try (rewrite system_bound_in_user_tautology; tauto); repeat rewrite <- system_bound_in_reorder; mycrush.
+Qed. 
   
+Lemma bound_system_exp_strong_reorder : forall e l1 l2, (bound_system_exp e (l1 ++ l2)) = (bound_system_exp e (l2 ++ l1)).
+  induction e; mycrush;
+  try (destruct f; mycrush; try (repeat rewrite system_bound_in_user_tautology; tauto); rewrite <- system_bound_in_strong_reorder; tauto).
+  - destruct f; destruct f0; repeat rewrite system_bound_in_user_tautology.
+    * tauto.
+    * rewrite <- system_bound_in_strong_reorder; tauto.
+    * rewrite <- system_bound_in_strong_reorder; tauto.
+    * rewrite <- system_bound_in_strong_reorder.
+      replace (system_bound_in (System n0) (l2 ++ l1)) with (system_bound_in (System n0) (l1 ++ l2)).
+    + tauto.
+    + rewrite system_bound_in_strong_reorder. tauto.
+Qed. 
 
 Lemma strong_induct_bound_system_exp: forall e l1 l2, ((bound_system_exp e l1) = true) -> ((bound_system_exp e (l1 ++ l2)) = true).
   induction l1 using rev_ind; induction l2 using rev_ind; mycrush.
