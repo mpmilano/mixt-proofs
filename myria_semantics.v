@@ -925,6 +925,13 @@ Lemma unique_nth_len : forall {A : Type} (hd tl : list A) (mid : A), exists n : 
   exists (S (length hd)). crush.
 Qed.
 
+  Lemma firstn_app n:
+    forall {A : Type} (l1 l2 : list A),
+    firstn n (l1 ++ l2) = (firstn n l1) ++ (firstn (n - length l1) l2).
+
+    Lemma firstn_app_2 n:
+      forall {A : Type} (l1 l2 : list A),
+    firstn ((length l1) + n) (l1 ++ l2) = l1 ++ firstn n l2.
 
 Lemma firstn_app_3 : forall {A : Type} (n : nat) (l1 l2 : list A), n <= length l1 -> firstn n (l1 ++ l2) = firstn n l1.
   intros.
@@ -1594,3 +1601,4 @@ Theorem flatten_correct : forall c s,
                                   | None => False
                                 end
                             end.
+Admitted. 
