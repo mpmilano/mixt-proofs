@@ -1409,72 +1409,41 @@ Lemma flatten_system_exp_all_bound' : forall e l1 l2 interim index, (fst((flatte
 Qed.
   
 
-
 Lemma flatten_unique : forall (c : com)(index:nat), (unique_decl_com c) -> unique_decl_flat (snd (flatten' index c)).
 Hint Constructors NoDup.
 Hint Resolve nodup_flatten_exp.
-Proof. induction c; mycrush; try (unfold unique_decl_flat; mycrush; tauto). 
-  - apply declare_everything_unique.
-    + auto. (*follows from sequential*)
-    + unfold unique_decl_flat.
-      unfold collect_declared_vars_flatcom. auto .
-    + unfold collect_declared_vars_flatcom. intros. auto.
-  -  
-    apply declare_everything_unique.
-    + auto.
-    + unfold unique_decl_flat. unfold collect_declared_vars_flatcom.
-    fold collect_declared_vars_flatcom. 
-    unfold unique_decl_com in H. 
-    unfold flatten in IHc. unfold unique_decl_com in IHc.
-    unfold unique_decl_flat in IHc.
-    unfold collect_declared_vars_com in H.
-    fold collect_declared_vars_com in H.
-    rewrite NoDup_cons_iff in *. destruct H. apply IHc with (index:=(next_index index (fst (flatten_exp index e)))) in H0.
-    split. Focus 2. auto.
-     unfold not; intro.
-     apply user_var_same in H1. auto.
+Proof. 
+ Ltac unfold_def := match goal with
+    | [H: context[unique_decl_com _] |- _ ] => unfold unique_decl_com in H
+    | [H: context [unique_decl_flat _] |- _] => unfold unique_decl_flat in H
     
-  +
-  unfold collect_declared_vars_flatcom.
-  fold collect_declared_vars_flatcom.
-  intros. unfold not. intro H2. destruct H2. congruence.
-  
-  apply flatten'_index_increase in H1. 
-   apply next_index_bigger in H0. omega.
-    
-  (*flatten_exp property*) 
-  - apply declare_everything_unique.
-    + auto.
-    + unfold unique_decl_flat.
-      unfold collect_declared_vars_flatcom. auto.
-    + unfold  collect_declared_vars_flatcom. intros. auto.
-  - apply declare_everything_unique.
-    + auto.
-    + apply declare_everything_unique.
-      * auto.
-      * unfold unique_decl_flat.
-        unfold collect_declared_vars_flatcom. auto.
-      * unfold  collect_declared_vars_flatcom. intros. auto.
-    + unfold collect_declared_vars_flatcom.
-  fold collect_declared_vars_flatcom.
-  intros. unfold not. intro. rewrite collect_declare_everything in H1. 
-  uvstac. apply helper in H1.
-  apply flatten_exp_index_cmp in H0.
-  apply next_index_bigger in H1. omega.
- unfold collect_declared_vars_flatcom in H1. auto.
-  - apply declare_everything_unique.
-    + auto.
-    + unfold unique_decl_flat.
-      unfold collect_declared_vars_flatcom. auto.
-    +  unfold  collect_declared_vars_flatcom. intros. auto.
-  - apply declare_everything_unique.
-    + auto.
-    + unfold unique_decl_flat.
-      unfold collect_declared_vars_flatcom. auto.
-    + unfold  collect_declared_vars_flatcom. intros. auto.
-
+    | [|- context [unique_decl_flat _] ] => unfold unique_decl_flat 
+    |[H: context [collect_declared_vars_flatcom _ ]|-_]=>
+        (unfold collect_declared_vars_flatcom ; auto;
+         try fold collect_declared_vars_flatcom)
+    | [|- context [collect_declared_vars_flatcom _ ]]=>
+        (unfold collect_declared_vars_flatcom ; auto;
+         try fold collect_declared_vars_flatcom)
+end.
+induction c; mycrush; try (unfold unique_decl_flat; mycrush; tauto);
+   try (apply declare_everything_unique; auto); 
+   repeat (unfold_def; auto).
+   - unfold collect_declared_vars_com in H;
+     fold collect_declared_vars_com in H.
+     rewrite NoDup_cons_iff in *. destruct H. split.
+     unfold not; intro. apply user_var_same in H1. auto.
+     apply IHc with (index:=(next_index index (fst (flatten_exp index e)))) in H0.
+     auto.
+   - intros; unfold not; intro H2. destruct H2. congruence.
+     apply flatten'_index_increase in H1. 
+     apply next_index_bigger in H0. omega.
+   - apply declare_everything_unique; auto; repeat (unfold_def).
+   -intros; unfold not; intro. rewrite collect_declare_everything in H1. 
+     uvstac. apply helper in H1.
+    apply flatten_exp_index_cmp in H0.
+    apply next_index_bigger in H1. omega.
+    unfold_def. 
 Qed.
-
 
 Fixpoint eval_flat_exp (e:flat_exp) (s:state) : answer := 
   match e with 
