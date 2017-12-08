@@ -1,5 +1,5 @@
 
-Require Import Bool Arith String List CpdtTactics.
+Require Import Bool Arith String List CpdtTactics. 
 Open Scope string_scope.
 Open Scope list_scope.
 
@@ -82,6 +82,21 @@ Definition get_remote_flat (x:flat_var) (s:state) : option value :=
     | (_,s') => s' x
   end.
 
+Definition hd_exists {A : Type} (l : list A) (pf : 1 <= length l ) : (exists (a : A), (hd_error l = Some a)).
+  induction l; crush.
+  destruct l; crush; exists a; crush.
+  Qed. 
+
+Definition hd_pf {A : Type} (l : list A) {pf : 1 <= length l } : A. 
+Proof.
+  refine (match l with
+            | hd :: tl => hd
+            | [] => _
+         end). 
+  induction l; crush.
+Qed. 
+
+Eval compute in (hd_pf ([0]) ) + 4. 
 
 Definition get_remote_surface (x:surface_var) (s:state) : option value :=
   get_remote_flat (User x) s.
