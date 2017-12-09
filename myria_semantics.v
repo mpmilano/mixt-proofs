@@ -1336,48 +1336,7 @@ Ltac uvstac := match goal with
   | [H: context[?l++[]] |- _] => rewrite app_nil_r in H
   end.
 
-Lemma flatten'_index_increase: forall c x index, 
-  
-  In (System x) (collect_declared_vars_flatcom (snd (flatten' index c)))
-  -> index <= x.
-
-Proof. induction c; mycrush.
-- rewrite collect_declare_everything in H. 
-  unfold collect_declared_vars_flatcom in H. 
-  uvstac. 
-  
-    
-    assert (In x  (map fst (fst (flatten_exp index e))))
-   by (apply helper; auto). apply flatten_exp_index_cmp with (e:=e); auto. contradict H.
-- rewrite collect_declare_everything in H. 
-  unfold collect_declared_vars_flatcom in H.
-  fold collect_declared_vars_flatcom in H.
-  uvstac.
-    
-    assert (In x  (map fst (fst (flatten_exp index e))))
-   by (apply helper; auto). apply flatten_exp_index_cmp with (e:=e); auto.
-   crush. apply IHc in H0; auto; auto. 
-  assert (index < (next_index index (fst (flatten_exp index e)))).
-  apply index_lt_next_index. omega.
-  
-- rewrite collect_declare_everything in H. uvstac.
-   assert (In x  (map fst (fst (flatten_exp index e))))
-   by (apply helper; auto). apply flatten_exp_index_cmp with (e:=e); auto.
-     unfold collect_declared_vars_flatcom in H.
-  fold collect_declared_vars_flatcom in H. contradict H.
-- repeat rewrite collect_declare_everything in H. 
-   uvstac. 
-
-   assert (In x   (
-         (map fst
-            (fst
-               (flatten_exp
-                  (next_index index (fst (flatten_exp index e0))) e)))))
-   by (apply helper; auto).
-  
- apply flatten_exp_index_cmp with (e:=e) in H0; auto.
- 
-  Lemma next_index_gt_index: forall e index,
+ Lemma next_index_gt_index: forall e index,
 index < next_index index (fst (flatten_exp index e)).
    Proof. intros. unfold next_index.
   destruct (fst (flatten_exp index e)) eqn: Q. auto.
@@ -1401,24 +1360,43 @@ index < next_index index (fst (flatten_exp index e)).
   apply first_is_index in QQ.
   apply first_smallest_sequential with(x:=n) in H1. subst. omega. auto.
 Qed.
-  assert (index < next_index index (fst (flatten_exp index e0)))
-  by (apply next_index_gt_index). omega.
+Lemma flatten'_index_increase: forall c x index, 
   
-uvstac.    assert (In x  (map fst (fst (flatten_exp index e0))))
-   by (apply helper; auto). apply flatten_exp_index_cmp with (e:=e0); auto.
-  unfold collect_declared_vars_flatcom in H. contradict H.
+  In (System x) (collect_declared_vars_flatcom (snd (flatten' index c)))
+  -> index <= x.
+ Ltac unfold_def := match goal with
+    | [H: context[unique_decl_com _] |- _ ] => unfold unique_decl_com in H
+    | [H: context [unique_decl_flat _] |- _] => unfold unique_decl_flat in H
+    
+    | [|- context [unique_decl_flat _] ] => unfold unique_decl_flat 
+    |[H: context [collect_declared_vars_flatcom _ ]|-_]=>
+        (unfold collect_declared_vars_flatcom in H; auto;
+         try fold collect_declared_vars_flatcom in H)
+    | [|- context [collect_declared_vars_flatcom _ ]]=>
+        (unfold collect_declared_vars_flatcom ; auto;
+         try fold collect_declared_vars_flatcom)
+end.
 
- 
-- rewrite collect_declare_everything in H.  uvstac.
-   assert (In x  (map fst (fst (flatten_exp index e))))
-   by (apply helper; auto). apply flatten_exp_index_cmp with (e:=e); auto.
-   unfold collect_declared_vars_flatcom in H. contradict H.
--  rewrite collect_declare_everything in H.
-   apply in_app_or in H. destruct H.
-   assert (In x  (map fst (fst (flatten_exp index e))))
-   by (apply helper; auto). apply flatten_exp_index_cmp with (e:=e); auto.
-   unfold collect_declared_vars_flatcom in H. contradict H.
+Ltac peel:= match goal with
+      | [H: In (System ?x0)
+      (map (fun x : nat => System x)
+         (map fst (fst (flatten_exp ?index ?e0)))) |- _]
+        => 
+    assert (In x0  (map fst (fst (flatten_exp index e0)))  ) as H0
+   by (apply helper; auto) ; apply flatten_exp_index_cmp with (e:=e0) in H0; auto 
+       end.
+Proof. induction c; mycrush;  repeat rewrite collect_declare_everything in H;
+  repeat unfold_def; uvstac; try peel; try (contradict H; tauto). - crush. 
+ apply IHc in H0; auto; auto. 
+  assert (index < (next_index index (fst (flatten_exp index e)))).
+  apply index_lt_next_index. omega.
+ -  assert (index < (next_index index (fst (flatten_exp index e0)))).
+  apply index_lt_next_index. omega.
+ - apply in_app_or in H. destruct H.
+   peel. contradict H.
 Qed.
+
+
 
 
 Lemma user_not_in_system: forall l x, In (User x) 
@@ -1538,25 +1516,25 @@ Fixpoint used_vars_flat c : (list flat_var) :=
 Lemma declare_everything_bound : forall c l index1 index2 e, (l = flatten_exp index1 e) -> (All_In (used_vars_flat c) l) ->
                                                      (bound_flat_com (snd (declare_everything index2 c l)) ).
 
-Lemma flatten_unique : forall (c : com)(index:nat), (unique_decl_com c) -> unique_decl_flat (snd (flatten' index c)).
-Hint Constructors NoDup.
-Hint Resolve nodup_flatten_exp.
-Proof. 
- Ltac unfold_def := match goal with
+Ltac unfold_def2 := match goal with
     | [H: context[unique_decl_com _] |- _ ] => unfold unique_decl_com in H
     | [H: context [unique_decl_flat _] |- _] => unfold unique_decl_flat in H
     
     | [|- context [unique_decl_flat _] ] => unfold unique_decl_flat 
-    |[H: context [collect_declared_vars_flatcom _ ]|-_]=>
-        (unfold collect_declared_vars_flatcom ; auto;
-         try fold collect_declared_vars_flatcom)
+
     | [|- context [collect_declared_vars_flatcom _ ]]=>
         (unfold collect_declared_vars_flatcom ; auto;
          try fold collect_declared_vars_flatcom)
 end.
+
+Lemma flatten_unique : forall (c : com)(index:nat), (unique_decl_com c) -> unique_decl_flat (snd (flatten' index c)).
+Hint Constructors NoDup.
+Hint Resolve nodup_flatten_exp.
+Proof. 
+
 induction c; mycrush; try (unfold unique_decl_flat; mycrush; tauto);
    try (apply declare_everything_unique; auto); 
-   repeat (unfold_def; auto).
+   repeat (unfold_def2; auto).
    - unfold collect_declared_vars_com in H;
      fold collect_declared_vars_com in H.
      rewrite NoDup_cons_iff in *. destruct H. split.
