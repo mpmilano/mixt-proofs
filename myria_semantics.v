@@ -1513,8 +1513,14 @@ Fixpoint used_vars_flat c : (list flat_var) :=
     | _ => []
   end.
 
-Lemma declare_everything_bound : forall c l index1 index2 e, (l = flatten_exp index1 e) -> (All_In (used_vars_flat c) l) ->
-                                                     (bound_flat_com (snd (declare_everything index2 c l)) ).
+Fixpoint All_In {A :Type} (l1 l2 : list A)  :=
+  match l1 with
+    | [] => True
+    | hd::tl => (In hd l2) /\ All_In tl l2
+  end.
+
+Lemma declare_everything_bound : forall c l index1 index2 e, (l = flatten_exp index1 e) -> (All_In (used_vars_flat c) (map (fun x => System (fst x)) (fst l))) ->
+                                                     (bound_flat_com (snd (declare_everything index2 (fst l) c)) ).
 
 Ltac unfold_def2 := match goal with
     | [H: context[unique_decl_com _] |- _ ] => unfold unique_decl_com in H
