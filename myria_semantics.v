@@ -87,16 +87,30 @@ Definition hd_exists {A : Type} (l : list A) (pf : 1 <= length l ) : (exists (a 
   destruct l; crush; exists a; crush.
   Qed. 
 
-Definition hd_pf {A : Type} (l : list A) {pf : 1 <= length l } : A. 
+Definition hd_pf {A : Type} (l : list A) (pf : [] <> l ) : A. 
 Proof.
   refine (match l with
             | hd :: tl => hd
             | [] => _
          end). 
   induction l; crush.
-Qed. 
+Defined. 
 
-Eval compute in (hd_pf ([0]) ) + 4. 
+Definition list_non_empty' {A : Type} ( l : list A) := match l with | _::_ => True | _ => False end.
+
+Lemma list_non_empty_implies : forall {A : Type} (l : list A), (list_non_empty' l) -> ([] <> l).
+  induction l; crush.
+Defined.
+
+Lemma nine_non_empty : [] <> [9]. Proof. crush. Qed.
+
+Lemma hds_non_empty : forall {A : Type} (hd : A) (l : list A), [] <> hd::l.
+Proof. induction l; crush. Qed.
+
+Lemma tls_non_empty : forall {A : Type} (l : list A) (tl : A), [] <> l ++ [tl].
+  Proof. induction l; crush. Qed.
+
+Eval compute in (hd_pf ([9]) (tls_non_empty [] 9) ) + 4. 
 
 Definition get_remote_surface (x:surface_var) (s:state) : option value :=
   get_remote_flat (User x) s.
@@ -995,14 +1009,6 @@ Lemma unique_nth_len : forall {A : Type} (hd tl : list A) (mid : A), exists n : 
   exists (S (length hd)). crush.
 Qed.
 
-  Lemma firstn_app n:
-    forall {A : Type} (l1 l2 : list A),
-    firstn n (l1 ++ l2) = (firstn n l1) ++ (firstn (n - length l1) l2).
-
-    Lemma firstn_app_2 n:
-      forall {A : Type} (l1 l2 : list A),
-    firstn ((length l1) + n) (l1 ++ l2) = l1 ++ firstn n l2.
-
 Lemma firstn_app_3 : forall {A : Type} (n : nat) (l1 l2 : list A), n <= length l1 -> firstn n (l1 ++ l2) = firstn n l1.
   intros.
   pose proof (firstn_app n l1 l2) as Hfnapp. rewrite -> Hfnapp. assert ((n - (length l1)) = 0) as Hn0. omega. rewrite -> Hn0. simpl. crush.
@@ -1660,14 +1666,26 @@ Fixpoint sn_flat_steps n c s :=
     | _ => step_com_flat c s
   end.
 
-Theorem flatten_correct : forall c s, 
-                            match (step_com_fn c s) with
+Fixpoint sn_surface_steps n c s :=
+  match n with
+    | S n' =>
+      match (step_com_fn c s) with
+        | Some (next_c,next_s,_) => sn_surface_steps n' next_c next_s
+        | None => None
+      end
+    | _ => step_com_fn c s
+  end.
+
+Definition proj_user (s : state) : state. Admitted.
+
+Theorem flatten_correct : forall c s n, 
+                            match (sn_surface_steps n c s) with
                               | None => True
                               | Some (cmd,s,val) =>
                                 exists n,
                                 match (sn_flat_steps n (flatten c) s) with
                                   | Some (cmd2,s2,val2) =>
-                                    s = s2 /\ val = val2 /\ ((flatten cmd) = cmd2)
+                                    (proj_user s) = (proj_user s2) /\ val = val2 /\ ((flatten cmd) = cmd2)
                                   | None => False
                                 end
                             end.
